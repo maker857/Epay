@@ -219,7 +219,7 @@ case 'apirefund': //API退款操作
 	$paypwd=trim($_POST['paypwd']);
 	$money = trim($_POST['money']);
 	if(!is_numeric($money) || !preg_match('/^[0-9.]+$/', $money))exit('{"code":-1,"msg":"金额输入错误"}');
-	if($paypwd!=$conf['admin_paypwd'])
+	if(!\lib\PasswordHasher::verifyAdmin($paypwd, $conf['admin_paypwd']))
 		exit('{"code":-1,"msg":"支付密码输入错误！"}');
 	
 	$refund_no = date("YmdHis").rand(11111,99999);

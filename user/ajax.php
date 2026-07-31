@@ -68,7 +68,6 @@ case 'login':
 	if($type==1 && is_numeric($user) && strlen($user)<=6)$type=0;
 	if($type==1){
 		$userrow=$DB->getRow("SELECT * FROM pre_user WHERE email=:user OR phone=:user limit 1", [':user'=>$user]);
-		$pass=getMd5Pwd($pass, $userrow['uid']);
 	}else{
 		if($conf['close_keylogin']==1)exit('{"code":-1,"msg":"未开启密钥登录，请使用账号密码登录！"}');
 		$userrow=$DB->getRow("SELECT * FROM pre_user WHERE uid=:user limit 1", [':user'=>$user]);
@@ -76,8 +75,14 @@ case 'login':
 			exit('{"code":-1,"msg":"该商户未开启密钥登录，请使用账号密码登录！"}');
 		}
 	}
-	if($userrow && ($type==0 && $pass==$userrow['key'] || $type==1 && $pass==$userrow['pwd'])) {
+	$passwordValid = $userrow && $type==1 && \lib\PasswordHasher::verifyMerchant($pass, $userrow['pwd'], intval($userrow['uid']));
+	$keyValid = $userrow && $type==0 && hash_equals((string)$userrow['key'], $pass);
+	if($passwordValid || $keyValid) {
 		$uid = $userrow['uid'];
+		if($passwordValid && \lib\PasswordHasher::needsRehash($userrow['pwd'])){
+			$userrow['pwd'] = \lib\PasswordHasher::hash($pass);
+			$DB->update('user', ['pwd'=>$userrow['pwd']], ['uid'=>$uid]);
+		}
 		if($alipay_uid=$_SESSION['Oauth_alipay_uid']){
 			$DB->update('user', ['alipay_uid'=>$alipay_uid], ['uid'=>$uid]);
 			unset($_SESSION['Oauth_alipay_uid']);
@@ -98,7 +103,7 @@ case 'login':
 				$_SESSION['wxnotice_login_uid'] = $uid;
 			}
 		}
-		$session=md5($uid.$userrow['key'].$password_hash);
+		$session=\lib\PasswordHasher::sessionFingerprint($uid, $userrow['key'], (string)$userrow['pwd'], $password_hash);
 		$expiretime=time()+604800;
 		$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
 		ob_clean();
@@ -141,7 +146,7 @@ case 'wxalogin':
 		$uid=$userrow['uid'];
 		$key=$userrow['key'];
 		$DB->insert('log', ['uid'=>$uid, 'type'=>'微信快捷登录', 'date'=>'NOW()', 'ip'=>$clientip]);
-		$session=md5($uid.$key.$password_hash);
+		$session=\lib\PasswordHasher::sessionFingerprint($uid, $key, (string)$userrow['pwd'], $password_hash);
 		$expiretime=time()+2592000;
 		$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
 		setcookie("user_token", $token, time() + 2592000);
@@ -337,8 +342,8 @@ case 'reg':
 		$sds=$DB->exec("INSERT INTO `pre_user` (`upid`, `key`, `money`, `email`, `phone`, `addtime`, `pay`, `settle`, `keylogin`, `apply`, `status`) VALUES (:upid, :key, '0.00', :email, :phone, NOW(), :paystatus, 1, 0, 0, 1)", [':upid'=>$upid, ':key'=>$key, ':email'=>$email, ':phone'=>$phone, ':paystatus'=>$paystatus]);
 		$uid=$DB->lastInsertId();
 		if($sds){
-			$pwd = getMd5Pwd($pwd, $uid);
-			$DB->exec("update `pre_user` set `pwd` ='{$pwd}' where `uid`='$uid'");
+			$pwd = \lib\PasswordHasher::hash($pwd);
+			$DB->update('user', ['pwd'=>$pwd], ['uid'=>$uid]);
 			if(!empty($email)){
 				$sub = $conf['sitename'].' - 注册成功通知';
 				$msg = '<h2>商户注册成功通知</h2>感谢您注册'.$conf['sitename'].'！<br/>您的登录账号：'.($info['email']?$info['email']:$info['phone']).'<br/>您的商户ID：'.$uid.'<br/>您的商户秘钥：'.$key.'<br/>'.$conf['sitename'].'官网：<a href="http://'.$_SERVER['HTTP_HOST'].'/" target="_blank">'.$_SERVER['HTTP_HOST'].'</a><br/>【<a href="'.$siteurl.'user/" target="_blank">商户管理后台</a>】';
@@ -446,8 +451,8 @@ case 'findpwd':
 	if($result !== true){
 		exit(json_encode(['code'=>-1, 'msg'=>$result]));
 	}
-	$pwd = getMd5Pwd($pwd, $userrow['uid']);
-	$sqs=$DB->exec("update `pre_user` set `pwd`='{$pwd}' where `uid`='{$userrow['uid']}'");
+	$pwd = \lib\PasswordHasher::hash($pwd);
+	$sqs=$DB->update('user', ['pwd'=>$pwd], ['uid'=>$userrow['uid']]);
 	if($sqs!==false){
 		\lib\VerifyCode::void_code();
 		exit('{"code":1,"msg":"重置密码成功！请牢记新密码"}');

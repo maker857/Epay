@@ -170,7 +170,7 @@ break;
 case 'batch_submit':
 	$type = isset($_POST['type'])?$_POST['type']:'alipay';
 	$out_biz_no = date("YmdHis").rand(11111,99999);
-	if(!isset($_POST['paypwd']) || $_POST['paypwd']!==$conf['admin_paypwd'])exit('{"code":-2,"msg":"支付密码错误"}');
+	if(!isset($_POST['paypwd']) || !\lib\PasswordHasher::verifyAdmin(trim($_POST['paypwd']), $conf['admin_paypwd']))exit('{"code":-2,"msg":"支付密码错误"}');
 	$payee_account = htmlspecialchars(trim($_POST['account']));
 	$payee_real_name = htmlspecialchars(trim($_POST['name']));
 	$money = trim($_POST['money']);

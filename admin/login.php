@@ -34,7 +34,13 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
     }
     $password = $plain;
   }
-  if($username == $conf['admin_user'] && $password == $conf['admin_pwd']){
+  $adminPasswordValid = $username == $conf['admin_user'] && \lib\PasswordHasher::verifyAdmin($password, $conf['admin_pwd']);
+  if($adminPasswordValid){
+    if (\lib\PasswordHasher::needsRehash($conf['admin_pwd'])) {
+      $conf['admin_pwd'] = \lib\PasswordHasher::hash($password);
+      saveSetting('admin_pwd', $conf['admin_pwd']);
+      $CACHE->clear();
+    }
     if ($conf['totp_open'] == 1 && !empty($conf['totp_secret'])) {
       \lib\AdminTotpLogin::begin($_SESSION, $username, $clientip);
       exit(json_encode(['code'=>-1, 'msg'=>'需要验证动态口令', 'vcode' => 2]));
@@ -44,7 +50,7 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
     if (file_exists($login_limit_file)) {
       unlink($login_limit_file);
     }
-		$session=md5($username.$password.$password_hash);
+		$session=hash('sha256', $username."\0".$conf['admin_pwd']."\0".$password_hash);
 		$expiretime=time() + 2592000;
 		$token=authcode("{$username}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
 		setcookie("admin_token", $token, $expiretime, null, null, null, true);
@@ -94,7 +100,7 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
   session_regenerate_id(true);
   \lib\AdminTotpLogin::clear($_SESSION);
   $DB->insert('log', ['uid'=>0, 'type'=>'登录后台', 'date'=>'NOW()', 'ip'=>$clientip]);
-  $session=md5($conf['admin_user'].$conf['admin_pwd'].$password_hash);
+  $session=hash('sha256', $conf['admin_user']."\0".$conf['admin_pwd']."\0".$password_hash);
   $expiretime=time() + 2592000;
   $token=authcode("{$conf['admin_user']}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
   setcookie("admin_token", $token, $expiretime, null, null, null, true);

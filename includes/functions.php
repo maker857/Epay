@@ -445,9 +445,6 @@ body{margin:0;padding:0}
 function getSid() {
     return md5(uniqid(mt_rand(), true) . microtime());
 }
-function getMd5Pwd($pwd, $salt=null) {
-    return md5(md5($pwd) . md5('1277180438'.$salt));
-}
 function getMillisecond()
 {
 	list($s1, $s2) = explode(' ', microtime());
@@ -624,8 +621,8 @@ function processOrder(&$srow,$notify=true){
 			$paystatus = $conf['user_review']==1?2:1;
 			$sds=$DB->exec("INSERT INTO `pre_user` (`upid`, `key`, `money`, `email`, `phone`, `addtime`, `pay`, `settle`, `keylogin`, `apply`, `status`) VALUES (:upid, :key, '0.00', :email, :phone, NOW(), :paystatus, 1, 0, 0, 1)", [':upid'=>$info['upid'], ':key'=>$key, ':email'=>$info['email'], ':phone'=>$info['phone'], ':paystatus'=>$paystatus]);
 			$uid=$DB->lastInsertId();
-			$pwd = getMd5Pwd($info['pwd'], $uid);
-			$DB->exec("UPDATE `pre_user` SET `pwd`='{$pwd}' WHERE `uid`='$uid'");
+			$pwd = \lib\PasswordHasher::hash($info['pwd']);
+			$DB->update('user', ['pwd'=>$pwd], ['uid'=>$uid]);
 			if($sds){
 				if(!empty($info['email'])){
 					$sub = $conf['sitename'].' - 注册成功通知';

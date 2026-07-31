@@ -34,4 +34,11 @@ if (PasswordHasher::verifyMerchant('wrong-password', $legacyMerchant, $uid)) {
     exit(1);
 }
 
+$sessionA = PasswordHasher::sessionFingerprint($uid, 'merchant-key', $hash, 'pepper');
+$sessionB = PasswordHasher::sessionFingerprint($uid, 'merchant-key', PasswordHasher::hash('Changed-Password-2026!'), 'pepper');
+if (hash_equals($sessionA, $sessionB)) {
+    fwrite(STDERR, "changing a password must invalidate existing login tokens\n");
+    exit(1);
+}
+
 echo "Password hashing compatibility tests passed." . PHP_EOL;

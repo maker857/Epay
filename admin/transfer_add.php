@@ -12,7 +12,7 @@ $app = isset($_GET['app'])?$_GET['app']:'alipay';
 if(isset($_POST['submit'])){
 	if(!checkRefererHost())exit();
 	$out_biz_no = trim($_POST['out_biz_no']);
-	if(!isset($_POST['paypwd']) || $_POST['paypwd']!==$conf['admin_paypwd'])showmsg('支付密码错误',3);
+	if(!isset($_POST['paypwd']) || !\lib\PasswordHasher::verifyAdmin(trim($_POST['paypwd']), $conf['admin_paypwd']))showmsg('支付密码错误',3);
 	$payee_account = htmlspecialchars(trim($_POST['payee_account']));
 	$payee_real_name = htmlspecialchars(trim($_POST['payee_real_name']));
 	$money = trim($_POST['money']);

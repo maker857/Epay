@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once '/var/www/html/includes/lib/PasswordHasher.php';
+
 $host = getenv('DB_HOST') ?: 'db';
 $port = getenv('DB_PORT') ?: '5432';
 $name = getenv('DB_NAME') ?: 'epay';
@@ -60,8 +62,8 @@ if (!$exists) {
             'build' => date('Y-m-d'),
             'cronkey' => (string)random_int(111111, 999999),
             'admin_user' => $adminUser,
-            'admin_pwd' => $adminPassword,
-            'admin_paypwd' => $adminPayPassword,
+            'admin_pwd' => \lib\PasswordHasher::hash($adminPassword),
+            'admin_paypwd' => \lib\PasswordHasher::hash($adminPayPassword),
         ];
         $insert = $pdo->prepare("INSERT INTO \"{$table}\" (k,v) VALUES (:k,:v) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v");
         foreach ($config as $key => $value) $insert->execute([':k' => $key, ':v' => $value]);
@@ -78,7 +80,7 @@ if (!$exists) {
 
 function upgrade_schema(PDO $pdo, string $prefix, string $configTable): void {
     $version = (int)$pdo->query("SELECT v FROM \"{$configTable}\" WHERE k='version'")->fetchColumn();
-    if ($version >= 2055) return;
+    if ($version >= 2056) return;
 
     $pdo->beginTransaction();
     try {
@@ -86,6 +88,7 @@ function upgrade_schema(PDO $pdo, string $prefix, string $configTable): void {
         $pdo->exec("ALTER TABLE \"{$prefix}_psreceiver\" ADD COLUMN IF NOT EXISTS mode smallint NOT NULL DEFAULT 0");
         $pdo->exec("ALTER TABLE \"{$prefix}_plugin\" ALTER COLUMN types TYPE varchar(500)");
         $pdo->exec("ALTER TABLE \"{$prefix}_plugin\" ALTER COLUMN transtypes TYPE varchar(500)");
+        $pdo->exec("ALTER TABLE \"{$prefix}_user\" ALTER COLUMN pwd TYPE varchar(255)");
         $pdo->exec("INSERT INTO \"{$prefix}_type\" (id,name,device,showname,status) VALUES (7,'douyinpay',0,'抖音支付',0) ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,device=EXCLUDED.device,showname=EXCLUDED.showname,status=EXCLUDED.status");
 
         $sequence = $pdo->query("SELECT pg_get_serial_sequence(" . $pdo->quote($prefix . '_type') . ", 'id')")->fetchColumn();
@@ -93,10 +96,19 @@ function upgrade_schema(PDO $pdo, string $prefix, string $configTable): void {
             $pdo->exec("SELECT setval(" . $pdo->quote($sequence) . ", (SELECT MAX(id) FROM \"{$prefix}_type\"), true)");
         }
 
-        $pdo->exec("UPDATE \"{$configTable}\" SET v='2055' WHERE k='version'");
+        foreach (['admin_pwd', 'admin_paypwd'] as $key) {
+            $statement = $pdo->prepare("SELECT v FROM \"{$configTable}\" WHERE k=:k");
+            $statement->execute([':k'=>$key]);
+            $stored = (string)$statement->fetchColumn();
+            if ($stored !== '' && !\lib\PasswordHasher::isModern($stored)) {
+                $update = $pdo->prepare("UPDATE \"{$configTable}\" SET v=:v WHERE k=:k");
+                $update->execute([':v'=>\lib\PasswordHasher::hash($stored), ':k'=>$key]);
+            }
+        }
+        $pdo->exec("UPDATE \"{$configTable}\" SET v='2056' WHERE k='version'");
         $pdo->exec("UPDATE \"{$prefix}_cache\" SET v='' WHERE k='config'");
         $pdo->commit();
-        fwrite(STDOUT, "PostgreSQL schema upgraded from {$version} to 2055\n");
+        fwrite(STDOUT, "PostgreSQL schema upgraded from {$version} to 2056\n");
     } catch (Throwable $e) {
         $pdo->rollBack();
         fwrite(STDERR, "PostgreSQL schema upgrade failed: {$e->getMessage()}\n");
