@@ -7,6 +7,60 @@ if(!checkRefererHost())exit('{"code":403}');
 
 @header('Content-Type: application/json; charset=UTF-8');
 
+function buildAdminOrderFilter($input, $allowSettle = false, $allowApply = false){
+	$sql = ' 1=1';
+	$params = [];
+	$integerFilters = ['uid'=>'uid', 'type'=>'type', 'channel'=>'channel', 'subchannel'=>'subchannel'];
+	foreach($integerFilters as $inputKey=>$column){
+		if(isset($input[$inputKey]) && $input[$inputKey] !== ''){
+			$sql .= " AND A.`{$column}`=:{$inputKey}";
+			$params[":{$inputKey}"] = (int)$input[$inputKey];
+		}
+	}
+	if($allowApply && !empty($input['applyid'])){
+		$sql .= ' AND A.`subchannel` IN (SELECT id FROM pre_subchannel WHERE apply_id=:applyid)';
+		$params[':applyid'] = (int)$input['applyid'];
+	}
+	if(isset($input['dstatus']) && !isNullOrEmpty($input['dstatus'])){
+		if($allowSettle && substr($input['dstatus'], 0, 6) === 'settle'){
+			$sql .= ' AND A.settle=:dstatus';
+			$params[':dstatus'] = (int)substr($input['dstatus'], 7);
+		}else{
+			$sql .= ' AND A.status=:dstatus';
+			$params[':dstatus'] = (int)$input['dstatus'];
+		}
+	}
+	if(!empty($input['starttime'])){
+		$sql .= ' AND A.addtime>=:starttime';
+		$params[':starttime'] = (string)$input['starttime'].' 00:00:00';
+	}
+	if(!empty($input['endtime'])){
+		$sql .= ' AND A.addtime<=:endtime';
+		$params[':endtime'] = (string)$input['endtime'].' 23:59:59';
+	}
+	if(isset($input['value']) && $input['value'] !== ''){
+		$allowedColumns = ['trade_no','out_trade_no','api_trade_no','bill_trade_no','bill_mch_trade_no','name','money','realmoney','getmoney','domain','ip','buyer','param'];
+		$column = $input['column'] ?? '';
+		if(in_array($column, $allowedColumns, true)){
+			if($column === 'name'){
+				$sql .= ' AND A.`name` LIKE :filter_like';
+				$params[':filter_like'] = '%'.(string)$input['value'].'%';
+			}elseif(in_array($column, ['money','realmoney','getmoney'], true) && strpos((string)$input['value'], '-') !== false){
+				$range = explode('-', (string)$input['value'], 2);
+				if(is_numeric($range[0]) && is_numeric($range[1])){
+					$sql .= " AND A.`{$column}`>=:filter_min AND A.`{$column}`<=:filter_max";
+					$params[':filter_min'] = $range[0];
+					$params[':filter_max'] = $range[1];
+				}
+			}else{
+				$sql .= " AND A.`{$column}`=:filter_value";
+				$params[':filter_value'] = (string)$input['value'];
+			}
+		}
+	}
+	return [$sql, $params];
+}
+
 switch($act){
 case 'orderList':
 	$paytype = [];
@@ -18,59 +72,11 @@ case 'orderList':
 	}
 	unset($rs);
 
-	$sql=" 1=1";
-	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
-		$uid = intval($_POST['uid']);
-		$sql.=" AND A.`uid`='$uid'";
-	}
-	if(isset($_POST['type']) && !empty($_POST['type'])) {
-		$type = intval($_POST['type']);
-		$sql.=" AND A.`type`='$type'";
-	}elseif(isset($_POST['channel']) && !empty($_POST['channel'])) {
-		$channel = intval($_POST['channel']);
-		$sql.=" AND A.`channel`='$channel'";
-	}elseif(isset($_POST['subchannel']) && !empty($_POST['subchannel'])) {
-		$subchannel = intval($_POST['subchannel']);
-		$sql.=" AND A.`subchannel`='$subchannel'";
-	}elseif(isset($_POST['applyid']) && !empty($_POST['applyid'])) {
-		$applyid = intval($_POST['applyid']);
-		$sql.=" AND A.`subchannel` IN (SELECT id FROM pre_subchannel WHERE apply_id='{$applyid}')";
-	}
-	if(isset($_POST['dstatus']) && !isNullOrEmpty($_POST['dstatus'])) {
-		if(substr($_POST['dstatus'], 0, 6) == 'settle'){
-			$dstatus = intval(substr($_POST['dstatus'], 7));
-			$sql.=" AND A.settle={$dstatus}";
-		}else{
-			$dstatus = intval($_POST['dstatus']);
-			$sql.=" AND A.status={$dstatus}";
-		}
-	}
-	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
-		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
-		}
-		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
-		}
-	}
-	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		if($_POST['column']=='name'){
-			$sql.=" AND A.`{$_POST['column']}` like '%{$_POST['value']}%'";
-		}else{
-			if(($_POST['column'] == 'money' || $_POST['column'] == 'realmoney' || $_POST['column'] == 'getmoney') && strpos($_POST['value'],'-')){
-				$money = explode('-', $_POST['value']);
-				$sql.=" AND A.`{$_POST['column']}`>='{$money[0]}' AND A.`{$_POST['column']}`<='{$money[1]}'";
-			}else{
-				$sql.=" AND A.`{$_POST['column']}`='{$_POST['value']}'";
-			}
-		}
-	}
+	[$sql, $params] = buildAdminOrderFilter($_POST, true, true);
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_order A WHERE{$sql}");
-	$list = $DB->getAll("SELECT A.*,B.plugin,B.name channelname FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE{$sql} order by trade_no desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_order A WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT A.*,B.plugin,B.name channelname FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE{$sql} order by trade_no desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		$row['typename'] = $paytypes[$row['type']];
@@ -82,64 +88,24 @@ case 'orderList':
 break;
 
 case 'statistics':
-    $sql=" 1=1";
-	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
-		$uid = intval($_POST['uid']);
-		$sql.=" AND A.`uid`='$uid'";
-	}
-	if(isset($_POST['type']) && !empty($_POST['type'])) {
-		$type = intval($_POST['type']);
-		$sql.=" AND A.`type`='$type'";
-	}elseif(isset($_POST['channel']) && !empty($_POST['channel'])) {
-		$channel = intval($_POST['channel']);
-		$sql.=" AND A.`channel`='$channel'";
-	}elseif(isset($_POST['subchannel']) && !empty($_POST['subchannel'])) {
-		$subchannel = intval($_POST['subchannel']);
-		$sql.=" AND A.`subchannel`='$subchannel'";
-	}
-	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
-		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND A.status={$dstatus}";
-	}
-	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
-		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
-		}
-		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
-		}
-	}
-	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		if($_POST['column']=='name'){
-			$sql.=" AND A.`{$_POST['column']}` like '%{$_POST['value']}%'";
-		}else{
-			if(($_POST['column'] == 'money' || $_POST['column'] == 'realmoney' || $_POST['column'] == 'getmoney') && strpos($_POST['value'],'-')){
-				$money = explode('-', $_POST['value']);
-				$sql.=" AND A.`{$_POST['column']}`>='{$money[0]}' AND A.`{$_POST['column']}`<='{$money[1]}'";
-			}else{
-				$sql.=" AND A.`{$_POST['column']}`='{$_POST['value']}'";
-			}
-		}
-	}
+	[$sql, $params] = buildAdminOrderFilter($_POST);
     // 统计数据
     $resultMoneyData = $DB->getRow("SELECT 
     SUM(money) AS totalMoney,
     SUM(CASE WHEN A.status = 1 THEN money ELSE 0 END) AS successMoney,
     SUM(CASE WHEN A.status = 0 THEN money ELSE 0 END) AS unpaidMoney,
     SUM(CASE WHEN A.status = 2 THEN refundmoney ELSE 0 END) AS refundMoney
-    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc");
+    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc", $params);
 
     $resultCount = $DB->getRow("SELECT 
     COUNT(*) AS totalCount,
     SUM(CASE WHEN A.status = 1 THEN 1 ELSE 0 END) AS successCount,
     SUM(CASE WHEN A.status = 0 THEN 1 ELSE 0 END) AS unpaidCount,
     SUM(CASE WHEN A.status = 2 THEN 1 ELSE 0 END) AS refundCount
-    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc");
+    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc", $params);
 
     // 获取平台总收入利润
-    $platformProfit = $DB->getColumn("SELECT SUM(A.profitmoney) FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} AND status = 1 order by trade_no desc");
+    $platformProfit = $DB->getColumn("SELECT SUM(A.profitmoney) FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} AND status = 1 order by trade_no desc", $params);
 
 	$result = [
         'totalMoney' => number_format($resultMoneyData['totalMoney'], 2, '.', '') ?? 0.00,
@@ -158,17 +124,24 @@ break;
 
 case 'riskList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
+		$allowedColumns = ['uid','url','content','ip'];
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, $allowedColumns, true)){
+			$sql.=" AND `{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	if(isset($_POST['type']) && $_POST['type']>-1) {
 		$type = intval($_POST['type']);
-		$sql.=" AND `type`={$type}";
+		$sql.=" AND `type`=:type";
+		$params[':type'] = $type;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_risk WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_risk WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_risk WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_risk WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;

@@ -32,27 +32,34 @@ function checkPluginSupportType($typeid, $plugin){
 switch($act){
 case 'channelList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['id']) && !empty($_POST['id'])) {
 		$id = intval($_POST['id']);
-		$sql.=" AND A.`id`='$id'";
+		$sql.=" AND A.`id`=:id";
+		$params[':id'] = $id;
 	}
 	if(isset($_POST['type']) && !empty($_POST['type'])) {
 		$type = intval($_POST['type']);
-		$sql.=" AND A.`type`='$type'";
+		$sql.=" AND A.`type`=:type";
+		$params[':type'] = $type;
 	}
 	if(isset($_POST['plugin']) && !empty($_POST['plugin'])) {
 		$plugin = trim($_POST['plugin']);
-		$sql.=" AND A.`plugin`='$plugin'";
+		$sql.=" AND A.`plugin`=:plugin";
+		$params[':plugin'] = $plugin;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND A.`status`={$dstatus}";
+		$sql.=" AND A.`status`=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw = trim(daddslashes($_POST['kw']));
-		$sql.=" AND (A.`id`='{$kw}' OR A.`name` like '%{$kw}%')";
+		$kw = trim((string)$_POST['kw']);
+		$sql.=" AND (A.`id`=:kw OR A.`name` like :kw_like)";
+		$params[':kw'] = $kw;
+		$params[':kw_like'] = '%'.$kw.'%';
 	}
-	$list = $DB->getAll("SELECT A.*,B.name typename,B.showname typeshowname FROM pre_channel A LEFT JOIN pre_type B ON A.type=B.id WHERE{$sql} ORDER BY id DESC");
+	$list = $DB->getAll("SELECT A.*,B.name typename,B.showname typeshowname FROM pre_channel A LEFT JOIN pre_type B ON A.type=B.id WHERE{$sql} ORDER BY id DESC", $params);
 	exit(json_encode($list));
 break;
 
@@ -451,22 +458,22 @@ case 'saveRoll':
 		$name=trim($_POST['name']);
 		$type=intval($_POST['type']);
 		$kind=intval($_POST['kind']);
-		$row=$DB->getRow("select * from pre_roll where name='$name' limit 1");
+		$row=$DB->getRow("select * from pre_roll where name=:name limit 1", [':name'=>$name]);
 		if($row)
 			exit('{"code":-1,"msg":"轮询组名称重复"}');
-		$sql = "INSERT INTO pre_roll (name, type, kind) VALUES ('{$name}', {$type}, {$kind})";
-		if($DB->exec($sql))exit('{"code":0,"msg":"新增轮询组成功！"}');
+		$sql = "INSERT INTO pre_roll (name, type, kind) VALUES (:name, :type, :kind)";
+		if($DB->exec($sql, [':name'=>$name, ':type'=>$type, ':kind'=>$kind]))exit('{"code":0,"msg":"新增轮询组成功！"}');
 		else exit('{"code":-1,"msg":"新增轮询组失败['.$DB->error().']"}');
 	}else{
 		$id=intval($_POST['id']);
 		$name=trim($_POST['name']);
 		$type=intval($_POST['type']);
 		$kind=intval($_POST['kind']);
-		$row=$DB->getRow("select * from pre_roll where name='$name' and id<>$id limit 1");
+		$row=$DB->getRow("select * from pre_roll where name=:name and id<>:id limit 1", [':name'=>$name, ':id'=>$id]);
 		if($row)
 			exit('{"code":-1,"msg":"轮询组名称重复"}');
-		$sql = "UPDATE pre_roll SET name='{$name}',type='{$type}',kind='{$kind}' WHERE id='$id'";
-		if($DB->exec($sql)!==false)exit('{"code":0,"msg":"修改轮询组成功！"}');
+		$sql = "UPDATE pre_roll SET name=:name,type=:type,kind=:kind WHERE id=:id";
+		if($DB->exec($sql, [':name'=>$name, ':type'=>$type, ':kind'=>$kind, ':id'=>$id])!==false)exit('{"code":0,"msg":"修改轮询组成功！"}');
 		else exit('{"code":-1,"msg":"修改轮询组失败['.$DB->error().']"}');
 	}
 break;
@@ -507,8 +514,8 @@ case 'saveRollInfo':
 	$info = trim($info,',');
 	if(empty($info))
 		exit('{"code":-1,"msg":"通道配置不能为空！"}');
-	$sql = "UPDATE pre_roll SET info='{$info}' WHERE id='$id'";
-	if($DB->exec($sql)!==false)exit('{"code":0,"msg":"修改轮询组成功！"}');
+	$sql = "UPDATE pre_roll SET info=:info WHERE id=:id";
+	if($DB->exec($sql, [':info'=>$info, ':id'=>$id])!==false)exit('{"code":0,"msg":"修改轮询组成功！"}');
 	else exit('{"code":-1,"msg":"修改轮询组失败['.$DB->error().']"}');
 break;
 

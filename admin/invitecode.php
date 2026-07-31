@@ -118,8 +118,9 @@ echo '<form action="invitecode.php" method="GET" class="form-inline">
 </form>';
 
 if(isset($_GET['kw'])) {
-	$sql=" `code`='{$_GET['kw']}'";
-	$numrows=$DB->getColumn("SELECT count(*) from pre_invitecode WHERE{$sql}");
+	$sql=" `code`=:code";
+	$params = [':code'=>(string)$_GET['kw']];
+	$numrows=$DB->getColumn("SELECT count(*) from pre_invitecode WHERE{$sql}", $params);
 	$con='包含 '.$_GET['kw'].' 的共有 <b>'.$numrows.'</b> 个邀请码';
 }else{
 	$numrows=$DB->getColumn("SELECT count(*) from pre_invitecode WHERE 1");

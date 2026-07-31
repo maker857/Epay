@@ -7,46 +7,47 @@ if(!checkRefererHost())exit('{"code":403}');
 
 @header('Content-Type: application/json; charset=UTF-8');
 
+function buildAdminTransferFilter($input){
+	$sql = ' 1=1';
+	$params = [];
+	foreach(['uid','type','channel','dstatus'] as $key){
+		if(isset($input[$key]) && $input[$key] !== '' && ($key !== 'dstatus' || $input[$key] > -1)){
+			$column = $key === 'dstatus' ? 'status' : $key;
+			$sql .= " AND `{$column}`=:{$key}";
+			$params[":{$key}"] = (int)$input[$key];
+		}
+	}
+	if(!empty($input['starttime'])){
+		$sql .= ' AND addtime>=:starttime';
+		$params[':starttime'] = (string)$input['starttime'].' 00:00:00';
+	}
+	if(!empty($input['endtime'])){
+		$sql .= ' AND addtime<=:endtime';
+		$params[':endtime'] = (string)$input['endtime'].' 23:59:59';
+	}
+	if(isset($input['value']) && $input['value'] !== ''){
+		$allowedColumns = ['biz_no','out_biz_no','pay_order_no','uid','account','username','money','desc'];
+		$column = $input['column'] ?? '';
+		if(in_array($column, $allowedColumns, true)){
+			if(in_array($column, ['username','desc'], true)){
+				$sql .= " AND `{$column}` LIKE :filter_like";
+				$params[':filter_like'] = '%'.(string)$input['value'].'%';
+			}else{
+				$sql .= " AND `{$column}`=:filter_value";
+				$params[':filter_value'] = (string)$input['value'];
+			}
+		}
+	}
+	return [$sql, $params];
+}
+
 switch($act){
 case 'transferList':
-	$sql=" 1=1";
-	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
-		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
-	}
-	if(isset($_POST['type']) && !empty($_POST['type'])) {
-		$type = intval($_POST['type']);
-		$sql.=" AND `type`='$type'";
-	}
-	if(isset($_POST['channel']) && !empty($_POST['channel'])) {
-		$channel = intval($_POST['channel']);
-		$sql.=" AND `channel`='$channel'";
-	}
-	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
-		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`={$dstatus}";
-	}
-	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
-		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND addtime>='{$starttime} 00:00:00'";
-		}
-		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND addtime<='{$endtime} 23:59:59'";
-		}
-	}
-	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		if($_POST['column']=='username'||$_POST['column']=='desc'){
-			$sql.=" AND `{$_POST['column']}` LIKE '%{$_POST['value']}%'";
-		}else{
-			$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
-		}
-	}
+	[$sql, $params] = buildAdminTransferFilter($_POST);
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_transfer WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_transfer WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		if($row['type'] == 'wxpay' && $row['status'] == 0 && !empty($row['ext'])){
@@ -66,44 +67,15 @@ case 'transferList':
 break;
 
 case 'statistics':
-	$sql=" 1=1";
-	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
-		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
-	}
-	if(isset($_POST['type']) && !empty($_POST['type'])) {
-		$type = intval($_POST['type']);
-		$sql.=" AND `type`='$type'";
-	}
-	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
-		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`={$dstatus}";
-	}
-	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
-		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND addtime>='{$starttime} 00:00:00'";
-		}
-		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND addtime<='{$endtime} 23:59:59'";
-		}
-	}
-	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		if($_POST['column']=='username'||$_POST['column']=='desc'){
-			$sql.=" AND `{$_POST['column']}` LIKE '%{$_POST['value']}%'";
-		}else{
-			$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
-		}
-	}
-	$totalMoney = $DB->getColumn("SELECT SUM(money) FROM pre_transfer WHERE{$sql} AND status<>2");
+	[$sql, $params] = buildAdminTransferFilter($_POST);
+	$totalMoney = $DB->getColumn("SELECT SUM(money) FROM pre_transfer WHERE{$sql} AND status<>2", $params);
 	$resultCount = $DB->getRow("SELECT 
     COUNT(*) AS totalCount,
     COUNT(status = 0 OR NULL) AS status0count,
     COUNT(status = 1 OR NULL) AS status1count,
     COUNT(status = 2 OR NULL) AS status2count,
     COUNT(status = 3 OR NULL) AS status3count
-    FROM pre_transfer WHERE{$sql}");
+    FROM pre_transfer WHERE{$sql}", $params);
 	exit(json_encode(['code'=>0, 'data'=>['totalMoney'=>number_format($totalMoney, 2, '.', '') ?? 0.00, 'totalCount'=>$resultCount['totalCount'], 'status0count'=>$resultCount['status0count'], 'status1count'=>$resultCount['status1count'], 'status2count'=>$resultCount['status2count'], 'status3count'=>$resultCount['status3count']]]));
 break;
 
@@ -237,16 +209,18 @@ case 'stat':
 	$startday = trim($_POST['startday']);
 	$endday = trim($_POST['endday']);
 	if(!$startday || !$endday)exit(json_encode(['code'=>0, 'msg'=>'no day']));
-	$sql="`addtime`>='{$startday} 00:00:00' AND `addtime`<='{$endday} 23:59:59' AND status=1";
+	$sql="`addtime`>=:startday AND `addtime`<=:endday AND status=1";
+	$params = [':startday'=>$startday.' 00:00:00', ':endday'=>$endday.' 23:59:59'];
 	if(isset($_POST['type']) && !empty($_POST['type'])) {
 		$type = trim($_POST['type']);
-		$sql.=" AND `type`='$type'";
+		$sql.=" AND `type`=:type";
+		$params[':type'] = $type;
 	}
 	$list = $DB->getAll("SELECT account,username,COUNT(*) AS order_count,SUM(money) AS money
 		FROM pre_transfer
 		WHERE {$sql}
 		GROUP BY account,username
-		ORDER BY money DESC");
+		ORDER BY money DESC", $params);
 	exit(json_encode($list));
 break;
 default:

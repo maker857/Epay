@@ -10,30 +10,35 @@ if(!checkRefererHost())exit('{"code":403}');
 switch($act){
 case 'settleList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['batch']) && !empty($_POST['batch'])) {
-		$batch = daddslashes($_POST['batch']);
-		$sql.=" AND `batch`='$batch'";
+		$sql.=" AND `batch`=:batch";
+		$params[':batch'] = (string)$_POST['batch'];
 	}
 	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
 		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
+		$sql.=" AND `uid`=:uid";
+		$params[':uid'] = $uid;
 	}
 	if(isset($_POST['type']) && !empty($_POST['type'])) {
 		$type = intval($_POST['type']);
-		$sql.=" AND `type`='$type'";
+		$sql.=" AND `type`=:type";
+		$params[':type'] = $type;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`={$dstatus}";
+		$sql.=" AND `status`=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$value = daddslashes($_POST['value']);
-		$sql.=" AND (`account` like '%{$value}%' OR `username` like '%{$value}%')";
+		$sql.=" AND (`account` like :value_like OR `username` like :value_like_user)";
+		$params[':value_like'] = '%'.(string)$_POST['value'].'%';
+		$params[':value_like_user'] = '%'.(string)$_POST['value'].'%';
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_settle WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_settle WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_settle WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_settle WHERE{$sql} order by id desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		if($row['type'] == 2 && $row['status'] == 1 && !empty($row['transfer_ext']) && time() - strtotime($row['transfer_date']) <= 86400){

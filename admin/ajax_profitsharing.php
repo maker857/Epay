@@ -7,22 +7,46 @@ if(!checkRefererHost())exit('{"code":403}');
 
 @header('Content-Type: application/json; charset=UTF-8');
 
+function buildAdminProfitSharingFilter($input){
+	$sql = ' 1=1';
+	$params = [];
+	if(isset($input['value']) && $input['value'] !== ''){
+		$allowedColumns = ['id','uid','account','name','info','status','trade_no'];
+		$column = $input['column'] ?? '';
+		if(in_array($column, $allowedColumns, true)){
+			if($column === 'info'){
+				$sql .= ' AND (A.`info` LIKE :filter_like OR A.`account` LIKE :filter_like_account)';
+				$params[':filter_like'] = '%'.(string)$input['value'].'%';
+				$params[':filter_like_account'] = '%'.(string)$input['value'].'%';
+			}else{
+				$sql .= " AND A.`{$column}`=:filter_value";
+				$params[':filter_value'] = (string)$input['value'];
+			}
+		}
+	}
+	if(isset($input['dstatus']) && $input['dstatus'] > -1){
+		$sql .= ' AND A.`status`=:dstatus';
+		$params[':dstatus'] = (int)$input['dstatus'];
+	}
+	if(!empty($input['starttime'])){
+		$sql .= ' AND A.addtime>=:starttime';
+		$params[':starttime'] = (string)$input['starttime'].' 00:00:00';
+	}
+	if(!empty($input['endtime'])){
+		$sql .= ' AND A.addtime<=:endtime';
+		$params[':endtime'] = (string)$input['endtime'].' 23:59:59';
+	}
+	return [$sql, $params];
+}
+
 switch($act){
 
 case 'receiverList':
-	$sql = " 1=1";
-	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$value=daddslashes($_POST['value']);
-		if($_POST['column'] == 'info'){
-			$sql .= " AND (A.`info` LIKE '%{$value}%' OR A.`account` LIKE '%{$value}%')";
-		}else{
-			$sql .= " AND A.`{$_POST['column']}`='{$value}'";
-		}
-	}
+	[$sql, $params] = buildAdminProfitSharingFilter($_POST);
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_psreceiver A WHERE{$sql}");
-	$list = $DB->getAll("SELECT A.*,B.name channelname,C.name subchannelname,C.apply_id FROM pre_psreceiver A LEFT JOIN pre_channel B ON A.channel=B.id LEFT JOIN pre_subchannel C ON A.subchannel=C.id WHERE{$sql} order by A.id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_psreceiver A WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT A.*,B.name channelname,C.name subchannelname,C.apply_id FROM pre_psreceiver A LEFT JOIN pre_channel B ON A.channel=B.id LEFT JOIN pre_subchannel C ON A.subchannel=C.id WHERE{$sql} order by A.id desc limit $offset,$limit", $params);
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
 case 'orderList':
@@ -36,31 +60,40 @@ case 'orderList':
 	unset($rs);
 
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['rid']) && !empty($_POST['rid'])) {
 		$rid = intval($_POST['rid']);
-		$sql.=" AND A.`rid`='$rid'";
+		$sql.=" AND A.`rid`=:rid";
+		$params[':rid'] = $rid;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND A.`status`={$dstatus}";
+		$sql.=" AND A.`status`=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND A.addtime>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND A.addtime<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$sql.=" AND A.`{$_POST['column']}`='{$_POST['value']}'";
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, ['id','rid','trade_no','api_trade_no','status'], true)){
+			$sql.=" AND A.`{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_psorder A LEFT JOIN pre_psreceiver B ON A.rid=B.id LEFT JOIN pre_channel C ON B.channel=C.id WHERE{$sql}");
-	$list = $DB->getAll("SELECT A.*,C.id channelid,C.name channelname,C.type,D.realmoney ordermoney FROM pre_psorder A LEFT JOIN pre_psreceiver B ON A.rid=B.id LEFT JOIN pre_channel C ON B.channel=C.id LEFT JOIN pre_order D ON D.trade_no=A.trade_no WHERE{$sql} order by A.id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_psorder A LEFT JOIN pre_psreceiver B ON A.rid=B.id LEFT JOIN pre_channel C ON B.channel=C.id WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT A.*,C.id channelid,C.name channelname,C.type,D.realmoney ordermoney FROM pre_psorder A LEFT JOIN pre_psreceiver B ON A.rid=B.id LEFT JOIN pre_channel C ON B.channel=C.id LEFT JOIN pre_order D ON D.trade_no=A.trade_no WHERE{$sql} order by A.id desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		$row['typename'] = $paytypes[$row['type']];
@@ -94,14 +127,18 @@ case 'add_receiver':
 	if(!empty($data['uid']) && !$DB->find('user', 'uid', ['uid'=>$data['uid']]))exit('{"code":-1,"msg":"商户ID不存在"}');
 	if(!\lib\Channel::get($data['channel']))exit('{"code":-1,"msg":"支付通道不存在"}');
 	if(!strpos($data['rate'], '|') && $data['rate'] > 100) exit('{"code":-1,"msg":"分账比例不能大于100"}');
+	$duplicateParams = [':channel'=>$data['channel']];
 	if($data['uid'] > 0 && $data['subchannel'] > 0){
-		$sql = "`uid`='{$data['uid']}' AND `subchannel`='{$data['subchannel']}'";
+		$sql = "`uid`=:uid AND `subchannel`=:subchannel";
+		$duplicateParams[':uid'] = $data['uid'];
+		$duplicateParams[':subchannel'] = $data['subchannel'];
 	}elseif($data['uid'] > 0){
-		$sql = "`uid`='{$data['uid']}'";
+		$sql = "`uid`=:uid";
+		$duplicateParams[':uid'] = $data['uid'];
 	}else{
 		$sql = "`uid` IS NULL";
 	}
-	$rows = $DB->getRow("SELECT * FROM `pre_psreceiver` WHERE `channel`='{$data['channel']}' AND {$sql}");
+	$rows = $DB->getRow("SELECT * FROM `pre_psreceiver` WHERE `channel`=:channel AND {$sql}", $duplicateParams);
 	if($rows)exit('{"code":-1,"msg":"该支付通道&UID已存在分账规则"}');
 	if($DB->insert('psreceiver', $data)){
 		exit('{"code":0,"msg":"新增分账规则成功！"}');
@@ -126,14 +163,18 @@ case 'edit_receiver':
 	if(!empty($data['uid']) && !$DB->find('user', 'uid', ['uid'=>$data['uid']]))exit('{"code":-1,"msg":"商户ID不存在"}');
 	if(!\lib\Channel::get($data['channel']))exit('{"code":-1,"msg":"支付通道不存在"}');
 	if(!strpos($data['rate'], '|') && $data['rate'] > 100) exit('{"code":-1,"msg":"分账比例不能大于100"}');
+	$duplicateParams = [':channel'=>$data['channel'], ':id'=>$id];
 	if($data['uid'] > 0 && $data['subchannel'] > 0){
-		$sql = "`uid`='{$data['uid']}' AND `subchannel`='{$data['subchannel']}'";
+		$sql = "`uid`=:uid AND `subchannel`=:subchannel";
+		$duplicateParams[':uid'] = $data['uid'];
+		$duplicateParams[':subchannel'] = $data['subchannel'];
 	}elseif($data['uid'] > 0){
-		$sql = "`uid`='{$data['uid']}'";
+		$sql = "`uid`=:uid";
+		$duplicateParams[':uid'] = $data['uid'];
 	}else{
 		$sql = "`uid` IS NULL";
 	}
-	$rows = $DB->getRow("SELECT * FROM `pre_psreceiver` WHERE `channel`='{$data['channel']}' AND {$sql} AND id!='$id'");
+	$rows = $DB->getRow("SELECT * FROM `pre_psreceiver` WHERE `channel`=:channel AND {$sql} AND id!=:id", $duplicateParams);
 	if($rows)exit('{"code":-1,"msg":"该支付通道&UID已存在分账规则"}');
 	if($row['status']==1 && $data['channel'] != $row['channel']){
 		exit('{"code":-1,"msg":"请先将状态改为已关闭再切换通道"}');
@@ -318,31 +359,35 @@ break;
 
 case 'statistics':
     $sql = " 1=1";
+    $params = [];
     if(isset($_POST['rid']) && !empty($_POST['rid'])) {
         $rid = intval($_POST['rid']);
-        $sql .= " AND rid='$rid'";
+        $sql .= " AND rid=:rid";
+        $params[':rid'] = $rid;
     }
     if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
         $dstatus = intval($_POST['dstatus']);
-        $sql .= " AND status={$dstatus}";
+        $sql .= " AND status=:dstatus";
+        $params[':dstatus'] = $dstatus;
     }
     if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
         if(!empty($_POST['starttime'])){
-            $starttime = daddslashes($_POST['starttime']);
-            $sql .= " AND addtime>='{$starttime} 00:00:00'";
+            $starttime = (string)$_POST['starttime'];
+            $sql .= " AND addtime>=:starttime";
+            $params[':starttime'] = $starttime.' 00:00:00';
         }
         if(!empty($_POST['endtime'])){
-            $endtime = daddslashes($_POST['endtime']);
-            $sql .= " AND addtime<='{$endtime} 23:59:59'";
+            $endtime = (string)$_POST['endtime'];
+            $sql .= " AND addtime<=:endtime";
+            $params[':endtime'] = $endtime.' 23:59:59';
         }
     }
     if(isset($_POST['value']) && !empty($_POST['value'])) {
-        $column = daddslashes($_POST['column']);
-        if($column == 'money'){
-            $sql .= " AND {$column}='".floatval($_POST['value'])."'";
-        }else{
-            $sql .= " AND {$column}='".daddslashes($_POST['value'])."'";
-        }
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, ['rid','trade_no','api_trade_no','money','status'], true)){
+            $sql .= " AND {$column}=:filter_value";
+            $params[':filter_value'] = $column === 'money' ? (float)$_POST['value'] : (string)$_POST['value'];
+		}
     }
 
     $result = $DB->getRow("SELECT 
@@ -352,7 +397,7 @@ case 'statistics':
         COUNT(*) AS totalCount,
         SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS successCount,
         SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS failCount
-        FROM pre_psorder WHERE {$sql}");
+        FROM pre_psorder WHERE {$sql}", $params);
 
     $successRate = $result['totalCount'] > 0 ? round(($result['successCount'] / $result['totalCount']) * 100, 2) : 0;
 

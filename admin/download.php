@@ -43,7 +43,7 @@ $remark = text_encoding($conf['transfer_desc']);
 if($type == 'mybank'){
 	$data="收款方名称,收款方账号,收款方开户行名称,收款行联行号,金额,附言/用途\r\n";
 	
-	$rs=$DB->query("SELECT * from pre_settle where batch='$batch' and (type=1 or type=4) order by id asc");
+	$rs=$DB->query("SELECT * from pre_settle where batch=:batch and (type=1 or type=4) order by id asc", [':batch'=>$batch]);
 	$i=0;
 	while($row = $rs->fetch())
 	{
@@ -55,7 +55,7 @@ if($type == 'mybank'){
 	$data="支付宝批量付款文件模板\r\n";
 	$data.="序号（必填）,收款方支付宝账号（必填）,收款方姓名（必填）,金额（必填，单位：元）,备注（选填）\r\n";
 
-	$rs=$DB->query("SELECT * from pre_settle where batch='$batch' and type=1 order by id asc");
+	$rs=$DB->query("SELECT * from pre_settle where batch=:batch and type=1 order by id asc", [':batch'=>$batch]);
 	$i=0;
 	while($row = $rs->fetch())
 	{
@@ -70,7 +70,7 @@ if($type == 'mybank'){
 	$wxinfo = \lib\Channel::getWeixin($channel['appwxmp']);
 	if(!$wxinfo)sysmsg("支付通道绑定的微信公众号不存在");
 
-	$rs=$DB->query("SELECT * from pre_settle where batch='$batch' and type=2 order by id asc");
+	$rs=$DB->query("SELECT * from pre_settle where batch=:batch and type=2 order by id asc", [':batch'=>$batch]);
 	$i=0;
 	$table="商家明细单号（必填）,收款用户openid（必填）,收款用户姓名（选填）,收款用户身份证（选填）,转账金额（必填，单位：元）,转账备注（必填）\r\n";
 	$allmoney = 0;
@@ -94,7 +94,7 @@ if($type == 'mybank'){
 
 }else{
 	$data="序号,转账方式,收款账号,收款人姓名,转账金额（元）,转账备注\r\n";
-	$rs=$DB->query("SELECT * from pre_settle where batch='$batch' order by type asc,id asc");
+	$rs=$DB->query("SELECT * from pre_settle where batch=:batch order by type asc,id asc", [':batch'=>$batch]);
 	$i=0;
 	while($row = $rs->fetch())
 	{
@@ -149,7 +149,7 @@ if($method == 'type'){
 }
 
 if($type == 4){
-	$rs=$DB->query("SELECT uid,type,channel,money from pre_transfer where status=1 and paytime>='$startday' and paytime<='$endday'");
+	$rs=$DB->query("SELECT uid,type,channel,money from pre_transfer where status=1 and paytime>=:startday and paytime<=:endday", [':startday'=>$startday, ':endday'=>$endday]);
 	while($row = $rs->fetch())
 	{
 		$money = (float)$row['money'];
@@ -167,7 +167,7 @@ if($type == 4){
 		}
 	}
 }else{
-	$rs=$DB->query("SELECT uid,type,channel,money,realmoney,getmoney,profitmoney from pre_order where status=1 and date>='$startday' and date<='$endday'");
+	$rs=$DB->query("SELECT uid,type,channel,money,realmoney,getmoney,profitmoney from pre_order where status=1 and date>=:startday and date<=:endday", [':startday'=>$startday, ':endday'=>$endday]);
 	while($row = $rs->fetch())
 	{
 		if($type == 3){
@@ -236,29 +236,36 @@ foreach($rs as $row){
 unset($rs);
 
 $sql=" 1=1";
+$params = [];
 if(!empty($uid)) {
-	$sql.=" AND A.`uid`='$uid'";
+	$sql.=" AND A.`uid`=:uid";
+	$params[':uid'] = $uid;
 }
 if(!empty($type)) {
-	$sql.=" AND A.`type`='$type'";
+	$sql.=" AND A.`type`=:type";
+	$params[':type'] = $type;
 }elseif(!empty($channel)) {
-	$sql.=" AND A.`channel`='$channel'";
+	$sql.=" AND A.`channel`=:channel";
+	$params[':channel'] = $channel;
 }
 if($dstatus>-1) {
-	$sql.=" AND A.status={$dstatus}";
+	$sql.=" AND A.status=:dstatus";
+	$params[':dstatus'] = $dstatus;
 }
 if(!empty($starttime)){
 	$starttime = date("Y-m-d H:i:s", strtotime($starttime.' 00:00:00'));
-	$sql.=" AND A.addtime>='{$starttime}'";
+	$sql.=" AND A.addtime>=:starttime";
+	$params[':starttime'] = $starttime;
 }
 if(!empty($endtime)){
 	$endtime = date("Y-m-d H:i:s", strtotime("+1 days", strtotime($endtime.' 00:00:00')));
-	$sql.=" AND A.addtime<'{$endtime}'";
+	$sql.=" AND A.addtime<:endtime";
+	$params[':endtime'] = $endtime;
 }
 
 $file="系统订单号,商户订单号,接口订单号,商户号,网站域名,商品名称,订单金额,实际支付,商户分成,支付方式,支付通道ID,支付插件,支付账号,支付IP,创建时间,完成时间,支付状态,已退款金额,退款时间\r\n";
 
-$rs = $DB->query("SELECT A.*,B.plugin FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE{$sql} order by trade_no desc limit 100000");
+$rs = $DB->query("SELECT A.*,B.plugin FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE{$sql} order by trade_no desc limit 100000", $params);
 while($row = $rs->fetch()){
 	if($row['status']==2){
 		$row['refundtime'] = $DB->findColumn('refundorder', 'addtime', ['trade_no'=>$row['trade_no']], 'refund_no DESC');
@@ -293,24 +300,29 @@ $permit_text = [0=>'关闭', 1=>'开启'];
 $cert_text = [0=>'未认证', 1=>'已认证'];
 
 $sql=" 1=1";
+$params = [];
 if(!empty($gid)) {
-	$sql.=" AND `gid`='$gid'";
+	$sql.=" AND `gid`=:gid";
+	$params[':gid'] = $gid;
 }
 if(!empty($dstatus)) {
-	$sql.=" AND `status`={$dstatus}";
+	$sql.=" AND `status`=:dstatus";
+	$params[':dstatus'] = $dstatus;
 }
 if(!empty($starttime)){
 	$starttime = date("Y-m-d H:i:s", strtotime($starttime.' 00:00:00'));
-	$sql.=" AND addtime>='{$starttime}'";
+	$sql.=" AND addtime>=:starttime";
+	$params[':starttime'] = $starttime;
 }
 if(!empty($endtime)){
 	$endtime = date("Y-m-d H:i:s", strtotime("+1 days", strtotime($endtime.' 00:00:00')));
-	$sql.=" AND addtime<'{$endtime}'";
+	$sql.=" AND addtime<:endtime";
+	$params[':endtime'] = $endtime;
 }
 
 $file="用户ID,上级用户ID,用户组,手机号,邮箱,QQ,结算方式,结算账号,结算姓名,余额,保证金,注册时间,上次登录,商户状态,支付权限,结算权限,实名认证,聚合收款码链接\r\n";
 
-$rs = $DB->query("SELECT * FROM pre_user WHERE{$sql} order by uid desc limit 100000");
+$rs = $DB->query("SELECT * FROM pre_user WHERE{$sql} order by uid desc limit 100000", $params);
 while($row = $rs->fetch()){
 	$code_url = $siteurl.'paypage/?merchant='.authcode($row['uid'], 'ENCODE', SYS_KEY);
 	$file.=$row['uid'].','.$row['upid'].','.$group[$row['gid']].','.$row['phone'].','.$row['email'].','.$row['qq'].','.display_type($row['settle_id']).','.text_encoding($row['account']).','.text_encoding($row['username']).','.$row['money'].','.$row['deposit'].','.$row['addtime'].','.$row['lasttime'].','.$status_text[$row['status']].','.$permit_text[$row['pay']].','.$permit_text[$row['settle']].','.$cert_text[$row['cert']].','.$code_url."\r\n";
@@ -333,24 +345,29 @@ $uid = intval($_GET['uid']);
 $type = trim($_GET['type']);
 
 $sql=" 1=1";
+$params = [];
 if(!empty($uid)) {
-	$sql.=" AND `uid`='$uid'";
+	$sql.=" AND `uid`=:uid";
+	$params[':uid'] = $uid;
 }
 if(!empty($type)) {
-	$sql.=" AND `type`='$type'";
+	$sql.=" AND `type`=:type";
+	$params[':type'] = $type;
 }
 if(!empty($starttime)){
 	$starttime = date("Y-m-d H:i:s", strtotime($starttime.' 00:00:00'));
-	$sql.=" AND `date`>='{$starttime}'";
+	$sql.=" AND `date`>=:starttime";
+	$params[':starttime'] = $starttime;
 }
 if(!empty($endtime)){
 	$endtime = date("Y-m-d H:i:s", strtotime("+1 days", strtotime($endtime.' 00:00:00')));
-	$sql.=" AND `date`<'{$endtime}'";
+	$sql.=" AND `date`<:endtime";
+	$params[':endtime'] = $endtime;
 }
 
 $file="ID,商户号,操作类型,变更类型,变更金额,变更前金额,变更后金额,时间,关联订单号\r\n";
 
-$rs = $DB->query("SELECT * FROM pre_record WHERE{$sql} order by id desc limit 100000");
+$rs = $DB->query("SELECT * FROM pre_record WHERE{$sql} order by id desc limit 100000", $params);
 while($row = $rs->fetch()){
 	$file.=$row['id'].','.$row['uid'].','.text_encoding($row['type']).','.($row['action']==2?'-':'+').','.$row['money'].','.$row['oldmoney'].','.$row['newmoney'].','.$row['date'].',="'.$row['trade_no']."\"\r\n";
 }
@@ -375,30 +392,40 @@ $type = trim($_GET['type']);
 $sheet = trim($_GET['sheet']);
 
 $sql=" 1=1";
+$params = [];
 if(!empty($uid)) {
-	$sql.=" AND `uid`='$uid'";
+	$sql.=" AND `uid`=:uid";
+	$params[':uid'] = $uid;
 }
 if($sheet == 'alipay'){
-	$sql.=" AND `type`='alipay'";
+	$sql.=" AND `type`=:sheet_type";
+	$params[':sheet_type'] = 'alipay';
 }elseif($sheet == 'wxpay'){
-	$sql.=" AND `type`='wxpay'";
+	$sql.=" AND `type`=:sheet_type";
+	$params[':sheet_type'] = 'wxpay';
 }elseif($sheet == 'mybank'){
-	$sql.=" AND (`type`='alipay' OR `type`='bank')";
+	$sql.=" AND (`type`=:type_alipay OR `type`=:type_bank)";
+	$params[':type_alipay'] = 'alipay';
+	$params[':type_bank'] = 'bank';
 }elseif(!empty($type)) {
-	$sql.=" AND `type`='$type'";
+	$sql.=" AND `type`=:transfer_type";
+	$params[':transfer_type'] = $type;
 }
 if(!isNullOrEmpty($dstatus)) {
-	$sql.=" AND `status`={$dstatus}";
+	$sql.=" AND `status`=:dstatus";
+	$params[':dstatus'] = (int)$dstatus;
 }
 if(!empty($starttime)){
 	$starttime = date("Y-m-d H:i:s", strtotime($starttime.' 00:00:00'));
-	$sql.=" AND `addtime`>='{$starttime}'";
+	$sql.=" AND `addtime`>=:starttime";
+	$params[':starttime'] = $starttime;
 }
 if(!empty($endtime)){
 	$endtime = date("Y-m-d H:i:s", strtotime("+1 days", strtotime($endtime.' 00:00:00')));
-	$sql.=" AND `addtime`<'{$endtime}'";
+	$sql.=" AND `addtime`<:endtime";
+	$params[':endtime'] = $endtime;
 }
-$rs = $DB->query("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit 100000");
+$rs = $DB->query("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit 100000", $params);
 
 if($sheet == 'mybank'){
 	$data="收款方名称,收款方账号,收款方开户行名称,收款行联行号,金额,附言/用途\r\n";
@@ -499,42 +526,55 @@ foreach($rs as $row){
 unset($rs);
 
 $sql=" 1=1";
+$params = [];
 if(isset($_GET['uid']) && !empty($_GET['uid'])) {
 	$uid = intval($_GET['uid']);
-	$sql.=" AND A.`uid`='$uid'";
+	$sql.=" AND A.`uid`=:uid";
+	$params[':uid'] = $uid;
 }
 if(isset($_GET['paytype']) && !empty($_GET['paytype'])) {
 	$paytypen = intval($_GET['paytype']);
-	$sql.=" AND A.`paytype`='$paytypen'";
+	$sql.=" AND A.`paytype`=:paytype";
+	$params[':paytype'] = $paytypen;
 }elseif(isset($_GET['channel']) && !empty($_GET['channel'])) {
 	$channel = intval($_GET['channel']);
-	$sql.=" AND A.`channel`='$channel'";
+	$sql.=" AND A.`channel`=:channel";
+	$params[':channel'] = $channel;
 }
 if(isset($_GET['dstatus']) && $_GET['dstatus']>-1) {
 	$dstatus = intval($_GET['dstatus']);
-	$sql.=" AND A.`status`={$dstatus}";
+	$sql.=" AND A.`status`=:status";
+	$params[':status'] = $dstatus;
 }
 if(!empty($_GET['starttime']) || !empty($_GET['endtime'])){
 	if(!empty($_GET['starttime'])){
-		$starttime = daddslashes($_GET['starttime']);
-		$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
+		$starttime = (string)$_GET['starttime'];
+		$sql.=" AND A.addtime>=:starttime";
+		$params[':starttime'] = $starttime.' 00:00:00';
 	}
 	if(!empty($_GET['endtime'])){
-		$endtime = daddslashes($_GET['endtime']);
-		$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
+		$endtime = (string)$_GET['endtime'];
+		$sql.=" AND A.addtime<=:endtime";
+		$params[':endtime'] = $endtime.' 23:59:59';
 	}
 }
 if(isset($_GET['value']) && !empty($_GET['value'])) {
-	if($_GET['column']=='title' || $_GET['column']=='content'){
-		$sql.=" AND A.`{$_GET['column']}` like '%{$_GET['value']}%'";
-	}else{
-		$sql.=" AND A.`{$_GET['column']}`='{$_GET['value']}'";
+	$column = $_GET['column'] ?? '';
+	$allowedColumns = ['title','content','trade_no','uid','channel','paytype','status'];
+	if(in_array($column, $allowedColumns, true)){
+		if($column=='title' || $column=='content'){
+			$sql.=" AND A.`{$column}` LIKE :filter_like";
+			$params[':filter_like'] = '%'.(string)$_GET['value'].'%';
+		}else{
+			$sql.=" AND A.`{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_GET['value'];
+		}
 	}
 }
 
 $file="ID,商户号,支付方式,通道ID,关联订单号,商品名称,订单金额,问题类型,投诉原因,投诉详情,创建时间,最后更新时间,状态\r\n";
 
-$rs = $DB->query("SELECT A.*,B.money,B.name ordername,B.status orderstatus FROM pre_complain A LEFT JOIN pre_order B ON A.trade_no=B.trade_no WHERE{$sql} order by A.addtime desc limit 100000");
+$rs = $DB->query("SELECT A.*,B.money,B.name ordername,B.status orderstatus FROM pre_complain A LEFT JOIN pre_order B ON A.trade_no=B.trade_no WHERE{$sql} order by A.addtime desc limit 100000", $params);
 while($row = $rs->fetch()){
 	$file.=''.$row['id'].','.$row['uid'].','.$paytype[$row['paytype']].','.$row['channel'].',="'.$row['trade_no'].'",'.$row['ordername'].','.$row['money'].','.$row['type'].','.$row['title'].','.str_replace(["\r\n", "\n"]," ",$row['content']).','.$row['addtime'].','.$row['edittime'].','.['0'=>'待处理','1'=>'处理中','2'=>'处理完成'][$row['status']]."\r\n";
 }
