@@ -919,64 +919,74 @@ case 'orderList':
 	}
 	unset($rs);
 
-	$sql=" A.uid=$uid";
+	$sql=" A.uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['paytype']) && !empty($_POST['paytype'])) {
 		$type = intval($_POST['paytype']);
-		$sql.=" AND A.`type`='$type'";
+		$sql.=" AND A.`type`=:paytype";
+		$params[':paytype'] = $type;
 	}elseif(isset($_POST['channel']) && !empty($_POST['channel'])) {
 		$channel = intval($_POST['channel']);
-		$sql.=" AND A.`channel`='$channel'";
+		$sql.=" AND A.`channel`=:channel";
+		$params[':channel'] = $channel;
 	}elseif(isset($_POST['subchannel']) && !empty($_POST['subchannel'])) {
 		$subchannel = intval($_POST['subchannel']);
-		$sql.=" AND A.`subchannel`='$subchannel'";
+		$sql.=" AND A.`subchannel`=:subchannel";
+		$params[':subchannel'] = $subchannel;
 	}elseif(isset($_POST['applyid']) && !empty($_POST['applyid'])) {
 		$applyid = intval($_POST['applyid']);
-		$sql.=" AND A.`subchannel` IN (SELECT id FROM pre_subchannel WHERE apply_id='{$applyid}')";
+		$sql.=" AND A.`subchannel` IN (SELECT id FROM pre_subchannel WHERE apply_id=:applyid)";
+		$params[':applyid'] = $applyid;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND A.status='{$dstatus}'";
+		$sql.=" AND A.status=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND A.addtime>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND A.addtime<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw=daddslashes($_POST['kw']);
+		$kw=(string)$_POST['kw'];
 		if($_POST['type']==1){
-			$sql.=" AND A.`trade_no`='{$kw}'";
+			$sql.=" AND A.`trade_no`=:kw";
 		}elseif($_POST['type']==2){
-			$sql.=" AND A.`out_trade_no`='{$kw}'";
+			$sql.=" AND A.`out_trade_no`=:kw";
 		}elseif($_POST['type']==3){
-			$sql.=" AND A.`name` like '%{$kw}%'";
+			$sql.=" AND A.`name` like :kw_like";
+			$params[':kw_like'] = '%'.$kw.'%';
 		}elseif($_POST['type']==4){
-			$sql.=" AND A.`money`='{$kw}'";
+			$sql.=" AND A.`money`=:kw";
 		}elseif($_POST['type']==5){
-			$sql.=" AND A.`realmoney`='{$kw}'";
+			$sql.=" AND A.`realmoney`=:kw";
 		}elseif($_POST['type']==6){
-			$sql.=" AND A.`domain`='{$kw}'";
+			$sql.=" AND A.`domain`=:kw";
 		}elseif($_POST['type']==7){
-			$sql.=" AND A.`ip`='{$kw}'";
+			$sql.=" AND A.`ip`=:kw";
 		}elseif($_POST['type']==8){
-			$sql.=" AND A.`buyer`='{$kw}'";
+			$sql.=" AND A.`buyer`=:kw";
 		}elseif($_POST['type']==9){
-			$sql.=" AND A.`api_trade_no`='{$kw}'";
+			$sql.=" AND A.`api_trade_no`=:kw";
 		}elseif($_POST['type']==10){
-			$sql.=" AND A.`bill_trade_no`='{$kw}'";
+			$sql.=" AND A.`bill_trade_no`=:kw";
 		}elseif($_POST['type']==11){
-			$sql.=" AND A.`bill_mch_trade_no`='{$kw}'";
+			$sql.=" AND A.`bill_mch_trade_no`=:kw";
 		}
+		if(in_array((int)$_POST['type'], [1,2,4,5,6,7,8,9,10,11], true)) $params[':kw'] = $kw;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_order A WHERE{$sql}");
-	$list = $DB->getAll("SELECT A.*,B.plugin,C.apply_id submchid FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id LEFT JOIN pre_subchannel C ON A.subchannel=C.id WHERE{$sql} order by trade_no desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_order A WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT A.*,B.plugin,C.apply_id submchid FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id LEFT JOIN pre_subchannel C ON A.subchannel=C.id WHERE{$sql} order by trade_no desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		$row['typename'] = $paytypes[$row['type']];
@@ -987,56 +997,65 @@ case 'orderList':
 	exit(json_encode(['total'=>$total, 'rows'=>$list2]));
 break;
 case 'statistics':
-    $sql=" A.uid=$uid";
+	$sql=" A.uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['paytype']) && !empty($_POST['paytype'])) {
 		$type = intval($_POST['paytype']);
-		$sql.=" AND A.`type`='$type'";
+		$sql.=" AND A.`type`=:paytype";
+		$params[':paytype'] = $type;
 	}elseif(isset($_POST['channel']) && !empty($_POST['channel'])) {
 		$channel = intval($_POST['channel']);
-		$sql.=" AND A.`channel`='$channel'";
+		$sql.=" AND A.`channel`=:channel";
+		$params[':channel'] = $channel;
 	}elseif(isset($_POST['subchannel']) && !empty($_POST['subchannel'])) {
 		$subchannel = trim($_POST['subchannel']);
 		$subchannel = explode('|', $subchannel);
 		$subchannel = array_map('intval', $subchannel);
-		$sql.=" AND A.`subchannel` IN (".implode(",", $subchannel).")";
+		$subchannel = array_values(array_filter($subchannel, function($id){ return $id > 0; }));
+		if($subchannel) $sql.=" AND A.`subchannel` IN (".implode(",", $subchannel).")";
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND A.status='{$dstatus}'";
+		$sql.=" AND A.status=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND A.addtime>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND A.addtime>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND A.addtime<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND A.addtime<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw=daddslashes($_POST['kw']);
+		$kw=(string)$_POST['kw'];
 		if($_POST['type']==1){
-			$sql.=" AND A.`trade_no`='{$kw}'";
+			$sql.=" AND A.`trade_no`=:kw";
 		}elseif($_POST['type']==2){
-			$sql.=" AND A.`out_trade_no`='{$kw}'";
+			$sql.=" AND A.`out_trade_no`=:kw";
 		}elseif($_POST['type']==3){
-			$sql.=" AND A.`name` like '%{$kw}%'";
+			$sql.=" AND A.`name` like :kw_like";
+			$params[':kw_like'] = '%'.$kw.'%';
 		}elseif($_POST['type']==4){
-			$sql.=" AND A.`money`='{$kw}'";
+			$sql.=" AND A.`money`=:kw";
 		}elseif($_POST['type']==5){
-			$sql.=" AND A.`realmoney`='{$kw}'";
+			$sql.=" AND A.`realmoney`=:kw";
 		}elseif($_POST['type']==6){
-			$sql.=" AND A.`domain`='{$kw}'";
+			$sql.=" AND A.`domain`=:kw";
 		}elseif($_POST['type']==7){
-			$sql.=" AND A.`ip`='{$kw}'";
+			$sql.=" AND A.`ip`=:kw";
 		}elseif($_POST['type']==8){
-			$sql.=" AND A.`buyer`='{$kw}'";
+			$sql.=" AND A.`buyer`=:kw";
 		}elseif($_POST['type']==9){
-			$sql.=" AND A.`api_trade_no`='{$kw}'";
+			$sql.=" AND A.`api_trade_no`=:kw";
 		}elseif($_POST['type']==10){
-			$sql.=" AND A.`bill_trade_no`='{$kw}'";
+			$sql.=" AND A.`bill_trade_no`=:kw";
 		}
+		if(in_array((int)$_POST['type'], [1,2,4,5,6,7,8,9,10], true)) $params[':kw'] = $kw;
 	}
     // 统计数据
     $resultMoneyData = $DB->getRow("SELECT 
@@ -1044,17 +1063,17 @@ case 'statistics':
     SUM(CASE WHEN A.status = 1 THEN money ELSE 0 END) AS successMoney,
     SUM(CASE WHEN A.status = 0 THEN money ELSE 0 END) AS unpaidMoney,
     SUM(CASE WHEN A.status = 2 THEN refundmoney ELSE 0 END) AS refundMoney
-    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc");
+    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc", $params);
 
     $resultCount = $DB->getRow("SELECT 
     COUNT(*) AS totalCount,
     SUM(CASE WHEN A.status = 1 THEN 1 ELSE 0 END) AS successCount,
     SUM(CASE WHEN A.status = 0 THEN 1 ELSE 0 END) AS unpaidCount,
     SUM(CASE WHEN A.status = 2 THEN 1 ELSE 0 END) AS refundCount
-    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc");
+    FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} order by trade_no desc", $params);
 
     // 获取平台总收入利润
-    $platformProfit = $DB->getColumn("SELECT SUM(A.profitmoney) FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} AND status = 1 order by trade_no desc");
+    $platformProfit = $DB->getColumn("SELECT SUM(A.profitmoney) FROM pre_order A LEFT JOIN pre_channel B ON A.channel=B.id WHERE {$sql} AND status = 1 order by trade_no desc", $params);
 
 	$result = [
         'totalMoney' => number_format($resultMoneyData['totalMoney'], 2, '.', '') ?? 0.00,
@@ -1072,34 +1091,38 @@ case 'statistics':
 break;
 
 case 'recordList':
-	$sql=" uid=$uid";
+	$sql=" uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw=daddslashes($_POST['kw']);
+		$kw=(string)$_POST['kw'];
 		if($_POST['type']==1){
-			$sql.=" AND `type`='{$kw}'";
+			$sql.=" AND `type`=:kw";
 		}elseif($_POST['type']==2){
-			$sql.=" AND `money`='{$kw}'";
+			$sql.=" AND `money`=:kw";
 		}elseif($_POST['type']==3){
-			$sql.=" AND `trade_no`='{$kw}'";
+			$sql.=" AND `trade_no`=:kw";
 		}
+		if(in_array((int)$_POST['type'], [1,2,3], true)) $params[':kw'] = $kw;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_record WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_record WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_record WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_record WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
 case 'settleList':
-	$sql=" uid=$uid";
+	$sql=" uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND status='{$dstatus}'";
+		$sql.=" AND status=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_settle WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_settle WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_settle WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_settle WHERE{$sql} order by id desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		if($row['type'] == 2 && $row['status'] == 1 && !empty($row['transfer_ext']) && time() - strtotime($row['transfer_date']) <= 86400){
@@ -1115,45 +1138,52 @@ case 'settleList':
 	exit(json_encode(['total'=>$total, 'rows'=>$list2]));
 break;
 case 'transferList':
-	$sql=" uid=$uid";
+	$sql=" uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['paytype']) && !empty($_POST['paytype'])) {
 		$type = intval($_POST['paytype']);
-		$sql.=" AND `type`='$type'";
+		$sql.=" AND `type`=:paytype";
+		$params[':paytype'] = $type;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`='{$dstatus}'";
+		$sql.=" AND `status`=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw=daddslashes($_POST['kw']);
+		$kw=(string)$_POST['kw'];
 		if($_POST['type']==1){
-			$sql.=" AND `biz_no`='{$kw}'";
+			$sql.=" AND `biz_no`=:kw";
 		}elseif($_POST['type']==2){
-			$sql.=" AND `out_biz_no`='{$kw}'";
+			$sql.=" AND `out_biz_no`=:kw";
 		}elseif($_POST['type']==3){
-			$sql.=" AND `pay_order_no`='{$kw}'";
+			$sql.=" AND `pay_order_no`=:kw";
 		}elseif($_POST['type']==4){
-			$sql.=" AND `account`='{$kw}'";
+			$sql.=" AND `account`=:kw";
 		}elseif($_POST['type']==5){
-			$sql.=" AND `username` LIKE '%{$kw}%'";
+			$sql.=" AND `username` LIKE :kw_like";
+			$params[':kw_like'] = '%'.$kw.'%';
 		}elseif($_POST['type']==6){
-			$sql.=" AND `money`='{$kw}'";
+			$sql.=" AND `money`=:kw";
 		}
+		if(in_array((int)$_POST['type'], [1,2,3,4,6], true)) $params[':kw'] = $kw;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND addtime>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND addtime>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND addtime<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND addtime<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_transfer WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_transfer WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_transfer WHERE{$sql} order by biz_no desc limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		if($row['type'] == 'wxpay' && $row['status'] == 0 && !empty($row['ext'])){
@@ -1172,49 +1202,55 @@ case 'transferList':
 	exit(json_encode(['total'=>$total, 'rows'=>$list2]));
 break;
 case 'transfer_statistics':
-	$sql=" uid=$uid";
+	$sql=" uid=:uid";
+	$params = [':uid'=>$uid];
 	if(isset($_POST['paytype']) && !empty($_POST['paytype'])) {
 		$type = intval($_POST['paytype']);
-		$sql.=" AND `type`='$type'";
+		$sql.=" AND `type`=:paytype";
+		$params[':paytype'] = $type;
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`={$dstatus}";
+		$sql.=" AND `status`=:dstatus";
+		$params[':dstatus'] = $dstatus;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND addtime>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND addtime>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND addtime<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND addtime<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$kw=daddslashes($_POST['kw']);
+		$kw=(string)$_POST['kw'];
 		if($_POST['type']==1){
-			$sql.=" AND `biz_no`='{$kw}'";
+			$sql.=" AND `biz_no`=:kw";
 		}elseif($_POST['type']==2){
-			$sql.=" AND `out_biz_no`='{$kw}'";
+			$sql.=" AND `out_biz_no`=:kw";
 		}elseif($_POST['type']==3){
-			$sql.=" AND `pay_order_no`='{$kw}'";
+			$sql.=" AND `pay_order_no`=:kw";
 		}elseif($_POST['type']==4){
-			$sql.=" AND `account`='{$kw}'";
+			$sql.=" AND `account`=:kw";
 		}elseif($_POST['type']==5){
-			$sql.=" AND `username`='{$kw}'";
+			$sql.=" AND `username`=:kw";
 		}elseif($_POST['type']==6){
-			$sql.=" AND `money`='{$kw}'";
+			$sql.=" AND `money`=:kw";
 		}
+		if(in_array((int)$_POST['type'], [1,2,3,4,5,6], true)) $params[':kw'] = $kw;
 	}
-	$totalMoney = $DB->getColumn("SELECT SUM(money) FROM pre_transfer WHERE{$sql} AND status<>2");
+	$totalMoney = $DB->getColumn("SELECT SUM(money) FROM pre_transfer WHERE{$sql} AND status<>2", $params);
 	$resultCount = $DB->getRow("SELECT 
     COUNT(*) AS totalCount,
     COUNT(status = 0 OR NULL) AS status0count,
     COUNT(status = 1 OR NULL) AS status1count,
     COUNT(status = 2 OR NULL) AS status2count,
     COUNT(status = 3 OR NULL) AS status3count
-    FROM pre_transfer WHERE{$sql}");
+    FROM pre_transfer WHERE{$sql}", $params);
 	exit(json_encode(['code'=>0, 'data'=>['totalMoney'=>number_format($totalMoney, 2, '.', '') ?? 0.00, 'totalCount'=>$resultCount['totalCount'], 'status0count'=>$resultCount['status0count'], 'status1count'=>$resultCount['status1count'], 'status2count'=>$resultCount['status2count'], 'status3count'=>$resultCount['status3count']]]));
 break;
 

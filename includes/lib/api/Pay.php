@@ -19,7 +19,7 @@ class Pay
         
         $pid=intval($queryArr['pid']);
         if(empty($pid))sysmsg('商户ID不能为空');
-        $userrow=$DB->getRow("SELECT `uid`,`gid`,`key`,`money`,`mode`,`pay`,`cert`,`status`,`channelinfo`,`qq`,`ordername`,`keytype`,`publickey`,`deposit`,`pay_minmoney`,`pay_maxmoney` FROM `pre_user` WHERE `uid`='{$pid}' LIMIT 1");
+        $userrow=$DB->getRow("SELECT `uid`,`gid`,`key`,`money`,`mode`,`pay`,`cert`,`status`,`channelinfo`,`qq`,`ordername`,`keytype`,`publickey`,`deposit`,`pay_minmoney`,`pay_maxmoney` FROM `pre_user` WHERE `uid`=:pid LIMIT 1", [':pid'=>$pid]);
         if(!$userrow)sysmsg('商户不存在！');
         if(isset($queryArr['__defend'])){
             $defend_result = $queryArr['__defend'];
@@ -114,13 +114,13 @@ class Pay
         if($blackip)sysmsg('系统异常无法完成付款');
 
         if($conf['pay_daymax'] > 0){
-            $daytotal = $DB->getColumn("select sum(money) from pre_order where `uid`=:uid and `date`='".date('Y-m-d')."' and status>0", ['uid'=>$pid]);
+            $daytotal = $DB->getColumn("select sum(money) from pre_order where `uid`=:uid and `date`=:today and status>0", [':uid'=>$pid, ':today'=>date('Y-m-d')]);
             if($daytotal + $money > $conf['pay_daymax']){
                 sysmsg('当前商户今日收款已达到限额，无法发起支付');
             }
         }
         if($conf['pay_iplimit'] > 0 && (empty($conf['pay_iplimit_white']) || strpos($conf['pay_iplimit_white'], $clientip)===false)){
-            $ipcount = $DB->getColumn("select count(*) from pre_order where `ip`=:ip and `date`='".date('Y-m-d')."' and status>0", ['ip'=>$clientip]);
+            $ipcount = $DB->getColumn("select count(*) from pre_order where `ip`=:ip and `date`=:today and status>0", [':ip'=>$clientip, ':today'=>date('Y-m-d')]);
             if($ipcount >= $conf['pay_iplimit']){
                 sysmsg('你今天已无法再发起支付，请明天再试');
             }
@@ -270,7 +270,7 @@ class Pay
 
         $pid=intval($queryArr['pid']);
         if(empty($pid))echojsonmsg('商户ID不能为空');
-        $userrow=$DB->getRow("SELECT `uid`,`gid`,`key`,`money`,`mode`,`pay`,`cert`,`status`,`channelinfo`,`qq`,`ordername`,`keytype`,`publickey`,`deposit`,`pay_minmoney`,`pay_maxmoney` FROM `pre_user` WHERE `uid`='{$pid}' LIMIT 1");
+        $userrow=$DB->getRow("SELECT `uid`,`gid`,`key`,`money`,`mode`,`pay`,`cert`,`status`,`channelinfo`,`qq`,`ordername`,`keytype`,`publickey`,`deposit`,`pay_minmoney`,`pay_maxmoney` FROM `pre_user` WHERE `uid`=:pid LIMIT 1", [':pid'=>$pid]);
         if(!$userrow)echojsonmsg('商户不存在！');
         
         try{
@@ -383,13 +383,13 @@ class Pay
         if($blackip)echojsonmsg('系统异常无法完成付款');
 
         if($conf['pay_daymax'] > 0){
-            $daytotal = $DB->getColumn("select sum(money) from pre_order where `uid`=:uid and `date`='".date('Y-m-d')."' and status>0", ['uid'=>$pid]);
+            $daytotal = $DB->getColumn("select sum(money) from pre_order where `uid`=:uid and `date`=:today and status>0", [':uid'=>$pid, ':today'=>date('Y-m-d')]);
             if($daytotal + $money > $conf['pay_daymax']){
                 echojsonmsg('当前商户今日收款已达到限额，无法发起支付');
             }
         }
         if($conf['pay_iplimit'] > 0 && (empty($conf['pay_iplimit_white']) || strpos($conf['pay_iplimit_white'], $clientip)===false)){
-            $ipcount = $DB->getColumn("select count(*) from pre_order where `ip`=:ip and `date`='".date('Y-m-d')."' and status>0", ['ip'=>$clientip]);
+            $ipcount = $DB->getColumn("select count(*) from pre_order where `ip`=:ip and `date`=:today and status>0", [':ip'=>$clientip, ':today'=>date('Y-m-d')]);
             if($ipcount >= $conf['pay_iplimit']){
                 echojsonmsg('你今天已无法再发起支付，请明天再试');
             }
@@ -538,16 +538,16 @@ class Pay
         $pid=intval($queryArr['pid']);
         
         if(!empty($queryArr['trade_no'])){
-            $trade_no=daddslashes($queryArr['trade_no']);
-            $order=$DB->getRow("SELECT * FROM pre_order WHERE uid='{$pid}' and trade_no='{$trade_no}' limit 1");
+            $trade_no=(string)$queryArr['trade_no'];
+            $order=$DB->getRow("SELECT * FROM pre_order WHERE uid=:pid and trade_no=:trade_no limit 1", [':pid'=>$pid, ':trade_no'=>$trade_no]);
         }elseif(!empty($queryArr['out_trade_no'])){
-            $out_trade_no=daddslashes($queryArr['out_trade_no']);
-            $order=$DB->getRow("SELECT * FROM pre_order WHERE uid='{$pid}' and out_trade_no='{$out_trade_no}' limit 1");
+            $out_trade_no=(string)$queryArr['out_trade_no'];
+            $order=$DB->getRow("SELECT * FROM pre_order WHERE uid=:pid and out_trade_no=:out_trade_no limit 1", [':pid'=>$pid, ':out_trade_no'=>$out_trade_no]);
         }else{
             throw new Exception('订单号不能为空');
         }
         if($order){
-            $type=$DB->getColumn("SELECT name FROM pre_type WHERE id='{$order['type']}' LIMIT 1");
+            $type=$DB->getColumn("SELECT name FROM pre_type WHERE id=:typeid LIMIT 1", [':typeid'=>$order['type']]);
             $result = ['code'=>0, 'trade_no'=>$order['trade_no'],'out_trade_no'=>$order['out_trade_no'],'api_trade_no'=>$order['api_trade_no'],'bill_trade_no'=>$order['bill_trade_no'],'bill_mch_trade_no'=>$order['bill_mch_trade_no'],'type'=>$type,'pid'=>$order['uid'],'addtime'=>$order['addtime'],'endtime'=>$order['endtime'],'name'=>$order['name'],'money'=>$order['money'],'param'=>$order['param'],'buyer'=>$order['buyer'],'clientip'=>$order['ip'],'status'=>$order['status'],'refundmoney'=>$order['refundmoney']];
             $result = array_filter($result, function($a){return !isEmpty($a);});
             return $result;

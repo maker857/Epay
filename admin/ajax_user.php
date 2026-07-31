@@ -17,33 +17,46 @@ case 'userList':
 	unset($rs);
 
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['dstatus']) && !empty($_POST['dstatus'])) {
 		$dstatus = explode('_',$_POST['dstatus']);
-		$sql.=" AND `{$dstatus[0]}`='{$dstatus[1]}'";
+		$filterColumns = ['status','pay','settle','keylogin','apply','refund','transfer'];
+		if(count($dstatus) === 2 && in_array($dstatus[0], $filterColumns, true) && preg_match('/^-?\d+$/', $dstatus[1])) {
+			$sql.=" AND `{$dstatus[0]}`=:dstatus_value";
+			$params[':dstatus_value'] = (int)$dstatus[1];
+		}
 	}
 	if(isset($_POST['gid']) && $_POST['gid']!=='') {
 		$gid = intval($_POST['gid']);
-		$sql.=" AND `gid`='$gid'";
+		$sql.=" AND `gid`=:gid";
+		$params[':gid'] = $gid;
 	}
 	if(isset($_POST['upid']) && $_POST['upid']!=='') {
 		$upid = intval($_POST['upid']);
-		$sql.=" AND `upid`='$upid'";
+		$sql.=" AND `upid`=:upid";
+		$params[':upid'] = $upid;
 	}
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
+		$filterColumns = ['uid','gid','upid','status','pay','settle','email','phone','username','account'];
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, $filterColumns, true)) {
+			$sql.=" AND `{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	if(isset($_POST['order_days']) && !empty($_POST['order_days'])) {
 		$order_days = intval($_POST['order_days']);
 		$sql.=" AND uid NOT IN (SELECT DISTINCT uid FROM pre_order WHERE date>=NOW()-INTERVAL {$order_days} DAY)";
 	}
-	$order = "uid desc";
+	$order = "uid DESC";
 	if(isset($_POST['order']) && !empty($_POST['order'])) {
-		$order=str_replace('_', ' ', $_POST['order']);
+		$orderMap = ['uid_asc'=>'uid ASC','uid_desc'=>'uid DESC','addtime_asc'=>'addtime ASC','addtime_desc'=>'addtime DESC'];
+		$order = $orderMap[$_POST['order']] ?? $order;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_user WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_user WHERE{$sql} order by {$order} limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_user WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_user WHERE{$sql} order by {$order} limit $offset,$limit", $params);
 	$list2 = [];
 	foreach($list as $row){
 		if($row['endtime']!=null && strtotime($row['endtime'])<time()){
@@ -61,54 +74,72 @@ break;
 
 case 'recordList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
 		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
+		$sql.=" AND `uid`=:uid";
+		$params[':uid'] = $uid;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND `date`>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND `date`>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND `date`<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND `date`<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
+		$filterColumns = ['uid','action','money','type','trade_no'];
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, $filterColumns, true)) {
+			$sql.=" AND `{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_record WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_record WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_record WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_record WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
 
 case 'record_stats':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
 		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
+		$sql.=" AND `uid`=:uid";
+		$params[':uid'] = $uid;
 	}
 	if(!empty($_POST['starttime']) || !empty($_POST['endtime'])){
 		if(!empty($_POST['starttime'])){
-			$starttime = daddslashes($_POST['starttime']);
-			$sql.=" AND `date`>='{$starttime} 00:00:00'";
+			$starttime = (string)$_POST['starttime'];
+			$sql.=" AND `date`>=:starttime";
+			$params[':starttime'] = $starttime.' 00:00:00';
 		}
 		if(!empty($_POST['endtime'])){
-			$endtime = daddslashes($_POST['endtime']);
-			$sql.=" AND `date`<='{$endtime} 23:59:59'";
+			$endtime = (string)$_POST['endtime'];
+			$sql.=" AND `date`<=:endtime";
+			$params[':endtime'] = $endtime.' 23:59:59';
 		}
 	}
 	if(isset($_POST['value']) && !empty($_POST['value'])) {
-		$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
+		$filterColumns = ['uid','action','money','type','trade_no'];
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, $filterColumns, true)) {
+			$sql.=" AND `{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	$result = $DB->getRow("SELECT 
         SUM(CASE WHEN action = 1 THEN money ELSE 0 END) AS incMoney,
         SUM(CASE WHEN action = 2 THEN money ELSE 0 END) AS decMoney
-        FROM pre_record WHERE {$sql}");
+        FROM pre_record WHERE {$sql}", $params);
 	$data = [
         'incMoney' => number_format($result['incMoney'] ?? 0, 2, '.', ''),
         'decMoney' => number_format($result['decMoney'] ?? 0, 2, '.', ''),
@@ -270,10 +301,12 @@ case 'buyerStat':
 	else if($method == '1') $column = 'ip';
 	else $column = 'buyer';
 	if(!$startday || !$endday)exit(json_encode(['code'=>0, 'msg'=>'no day']));
-	$sql = "`date` BETWEEN '{$startday}' AND '{$endday}' AND {$column} is not null AND status>0";
+	$sql = "`date` BETWEEN :startday AND :endday AND {$column} is not null AND status>0";
+	$params = [':startday'=>$startday, ':endday'=>$endday];
 	if(isset($_POST['type']) && !empty($_POST['type'])) {
 		$type = intval($_POST['type']);
-		$sql.=" AND `type`='$type'";
+		$sql.=" AND `type`=:type";
+		$params[':type'] = $type;
 	}
 	$list = $DB->getAll("SELECT A.*,ISNULL(B.id) is_black
 		FROM (SELECT {$column} `user`,COUNT(*) AS order_count,MAX(trade_no) trade_no
@@ -281,57 +314,70 @@ case 'buyerStat':
 		WHERE {$sql}
 		GROUP BY {$column}
 		ORDER BY order_count DESC) A
-		LEFT JOIN pay_blacklist B ON A.`user`=B.content");
+		LEFT JOIN pay_blacklist B ON A.`user`=B.content", $params);
 	exit(json_encode($list));
 break;
 
 case 'logList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['value']) && $_POST['value']!=='') {
-		$sql.=" AND `{$_POST['column']}`='{$_POST['value']}'";
+		$filterColumns = ['id','uid','type','ip','city'];
+		$column = $_POST['column'] ?? '';
+		if(in_array($column, $filterColumns, true)) {
+			$sql.=" AND `{$column}`=:filter_value";
+			$params[':filter_value'] = (string)$_POST['value'];
+		}
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_log WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_log WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_log WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_log WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
 
 case 'domainList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['uid']) && !empty($_POST['uid'])) {
 		$uid = intval($_POST['uid']);
-		$sql.=" AND `uid`='$uid'";
+		$sql.=" AND `uid`=:uid";
+		$params[':uid'] = $uid;
 	}
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$sql.=" AND `domain`='{$_POST['kw']}'";
+		$sql.=" AND `domain`=:domain";
+		$params[':domain'] = (string)$_POST['kw'];
 	}
 	if(isset($_POST['dstatus']) && $_POST['dstatus']>-1) {
 		$dstatus = intval($_POST['dstatus']);
-		$sql.=" AND `status`={$dstatus}";
+		$sql.=" AND `status`=:status";
+		$params[':status'] = $dstatus;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_domain WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_domain WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_domain WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_domain WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
 
 case 'blackList':
 	$sql=" 1=1";
+	$params = [];
 	if(isset($_POST['kw']) && !empty($_POST['kw'])) {
-		$sql.=" AND `content`='{$_POST['kw']}'";
+		$sql.=" AND `content`=:content";
+		$params[':content'] = (string)$_POST['kw'];
 	}
 	if(isset($_POST['type']) && $_POST['type']>-1) {
 		$type = intval($_POST['type']);
-		$sql.=" AND `type`={$type}";
+		$sql.=" AND `type`=:type";
+		$params[':type'] = $type;
 	}
 	$offset = intval($_POST['offset']);
 	$limit = intval($_POST['limit']);
-	$total = $DB->getColumn("SELECT count(*) from pre_blacklist WHERE{$sql}");
-	$list = $DB->getAll("SELECT * FROM pre_blacklist WHERE{$sql} order by id desc limit $offset,$limit");
+	$total = $DB->getColumn("SELECT count(*) from pre_blacklist WHERE{$sql}", $params);
+	$list = $DB->getAll("SELECT * FROM pre_blacklist WHERE{$sql} order by id desc limit $offset,$limit", $params);
 
 	exit(json_encode(['total'=>$total, 'rows'=>$list]));
 break;
