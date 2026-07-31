@@ -2,7 +2,7 @@ FROM php:8.3.8-apache-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libcurl4-openssl-dev libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
+        ca-certificates libcurl4-openssl-dev libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
         libonig-dev libpq-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" bcmath curl gd mbstring pdo_pgsql zip \

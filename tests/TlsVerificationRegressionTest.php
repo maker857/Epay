@@ -8,7 +8,6 @@ foreach ($iterator as $file) {
     if (!$file->isFile() || $file->getExtension() !== 'php') continue;
     $path = $file->getPathname();
     if (strpos($path, DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR) !== false) continue;
-    if (strpos($path, DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR) !== false) continue;
     $files[] = $path;
 }
 
