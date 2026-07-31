@@ -24,6 +24,12 @@ $checks = [
 	'admin/download.php' => ['{$_GET[\'column\']}', '{$_GET[\'value\']}', '{$_GET[\'starttime\']}', '{$_GET[\'endtime\']}'],
 	'user/download.php' => ['\'{$kw}\'', '\'{$starttime}', '\'{$endtime}'],
 	'includes/lib/api/Merchant.php' => ['uid=\'{$pid}\'', 'A.status=\'{$status}\''],
+	'admin/invitecode.php' => ['{$_GET[\'kw\']}'],
+	'admin/ajax_pay.php' => ['daddslashes($_POST[\'kw\'])', 'name=\'{$name}\'', 'info=\'{$info}\''],
+	'admin/ajax_settle.php' => ['daddslashes($_POST[\'value\'])'],
+	'admin/download.php' => ['daddslashes($_GET[\'starttime\'])', 'daddslashes($_GET[\'endtime\'])'],
+	'admin/ajax_transfer.php' => ['\'{$startday} 00:00:00\'', '\'{$endday} 23:59:59\''],
+	'admin/ajax_profitsharing.php' => ['daddslashes($_POST[\'value\'])', 'daddslashes($_POST[\'starttime\'])', 'daddslashes($_POST[\'endtime\'])'],
 ];
 
 $failures = [];
