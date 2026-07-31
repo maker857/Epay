@@ -36,11 +36,10 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
   }
   if($username == $conf['admin_user'] && $password == $conf['admin_pwd']){
     if ($conf['totp_open'] == 1 && !empty($conf['totp_secret'])) {
-      if (file_exists($login_limit_file)) {
-          unlink($login_limit_file);
-      }
+      \lib\AdminTotpLogin::begin($_SESSION, $username, $clientip);
       exit(json_encode(['code'=>-1, 'msg'=>'需要验证动态口令', 'vcode' => 2]));
     }
+    session_regenerate_id(true);
     $DB->insert('log', ['uid'=>0, 'type'=>'登录后台', 'date'=>'NOW()', 'ip'=>$clientip]);
     if (file_exists($login_limit_file)) {
       unlink($login_limit_file);
@@ -66,19 +65,34 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
   }
 }elseif(isset($_GET['act']) && $_GET['act']=='totp'){
   if(!checkRefererHost())exit('{"code":403}');
-  $code = trim($_POST['code']);
-  if (empty($code)) exit(json_encode(['code'=>-1,'msg'=>'请输入动态口令']));
+  $code = trim((string)($_POST['code'] ?? ''));
+  if (!preg_match('/^\d{6}$/', $code)) exit(json_encode(['code'=>-1,'msg'=>'动态口令格式错误']));
   if ($conf['totp_open'] != 1 || empty($conf['totp_secret'])) {
     exit(json_encode(['code'=>-1,'msg'=>'未启用TOTP二次验证']));
+  }
+  if (!\lib\AdminTotpLogin::isPendingValid($_SESSION, $conf['admin_user'], $clientip)) {
+    \lib\AdminTotpLogin::clear($_SESSION);
+    exit(json_encode(['code'=>-1,'msg'=>'登录状态已失效，请重新输入用户名和密码']));
+  }
+  $totpFailures = $DB->getColumn("SELECT count(*) FROM `pre_log` WHERE `ip`=:ip AND `date`>NOW()-INTERVAL '15 minutes' AND `type`=:type", [':ip'=>$clientip, ':type'=>'TOTP验证失败']);
+  if ($totpFailures >= $login_limit_count || \lib\AdminTotpLogin::attemptsExceeded($_SESSION)) {
+    \lib\AdminTotpLogin::clear($_SESSION);
+    exit(json_encode(['code'=>-1,'msg'=>'动态口令错误次数过多，请重新登录']));
   }
   try {
     $totp = \lib\TOTP::create($conf['totp_secret']);
     if (!$totp->verify($code)) {
+      \lib\AdminTotpLogin::recordFailure($_SESSION);
+      $DB->insert('log', ['uid'=>0, 'type'=>'TOTP验证失败', 'date'=>'NOW()', 'ip'=>$clientip]);
       exit(json_encode(['code'=>-1,'msg'=>'动态口令错误']));
     }
   } catch (Exception $e) {
-    exit(json_encode(['code'=>-1,'msg'=>$e->getMessage()]));
+    \lib\AdminTotpLogin::recordFailure($_SESSION);
+    $DB->insert('log', ['uid'=>0, 'type'=>'TOTP验证失败', 'date'=>'NOW()', 'ip'=>$clientip]);
+    exit(json_encode(['code'=>-1,'msg'=>'动态口令验证失败']));
   }
+  session_regenerate_id(true);
+  \lib\AdminTotpLogin::clear($_SESSION);
   $DB->insert('log', ['uid'=>0, 'type'=>'登录后台', 'date'=>'NOW()', 'ip'=>$clientip]);
   $session=md5($conf['admin_user'].$conf['admin_pwd'].$password_hash);
   $expiretime=time() + 2592000;

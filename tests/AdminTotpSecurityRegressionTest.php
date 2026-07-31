@@ -3,12 +3,12 @@ declare(strict_types=1);
 
 $source = file_get_contents(dirname(__DIR__) . '/admin/login.php');
 $checks = [
-    'password stage creates pending TOTP state' => "\$_SESSION['admin_totp_pending']",
-    'TOTP stage requires pending state' => "empty(\$_SESSION['admin_totp_pending'])",
-    'pending state has expiry' => "admin_totp_pending_expires",
+    'password stage creates pending TOTP state' => 'AdminTotpLogin::begin',
+    'TOTP stage requires pending state' => 'AdminTotpLogin::isPendingValid',
+    'pending state has expiry' => '登录状态已失效',
     'TOTP failures are rate limited' => 'TOTP验证失败',
     'successful TOTP rotates session id' => 'session_regenerate_id(true)',
-    'pending state is cleared after success' => "unset(\$_SESSION['admin_totp_pending'])",
+    'pending state is cleared after success' => 'AdminTotpLogin::clear',
 ];
 
 $failures = [];
