@@ -484,6 +484,9 @@ function getSetting($k, $force = false){
 }
 function saveSetting($k, $v){
 	global $DB;
+	if($DB->getDriver() === 'pgsql'){
+		return $DB->exec("INSERT INTO pre_config (v,k) VALUES (:v,:k) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v", [':v'=>$v, ':k'=>$k]);
+	}
 	return $DB->exec("REPLACE INTO pre_config SET v=:v,k=:k", [':v'=>$v, ':k'=>$k]);
 }
 function checkGroupSettings($str){

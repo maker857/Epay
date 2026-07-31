@@ -1,0 +1,7 @@
+.git
+.env
+.env.*
+docker-compose*.yml
+Dockerfile*
+*.log
+install/install.lock

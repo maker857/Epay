@@ -8,6 +8,7 @@ class PdoHelper
 	private $fetchStyle = \PDO::FETCH_ASSOC;
 	private $prefix;
 	private $errorInfo;
+	private $driver = 'mysql';
 
 	/**
 	 * PdoHelper constructor.
@@ -17,15 +18,47 @@ class PdoHelper
 	function __construct($dbconfig)
 	{
 		$this->prefix = $dbconfig['dbqz'].'_';
+		$this->driver = !empty($dbconfig['driver']) ? strtolower($dbconfig['driver']) : 'mysql';
 		try {
-			$this->db = new \PDO("mysql:host={$dbconfig['host']};dbname={$dbconfig['dbname']};port={$dbconfig['port']}",$dbconfig['user'],$dbconfig['pwd']);
+			if ($this->driver === 'pgsql' || $this->driver === 'postgres' || $this->driver === 'postgresql') {
+				$this->driver = 'pgsql';
+				$this->db = new \PDO("pgsql:host={$dbconfig['host']};dbname={$dbconfig['dbname']};port={$dbconfig['port']}",$dbconfig['user'],$dbconfig['pwd']);
+			} else {
+				$this->driver = 'mysql';
+				$this->db = new \PDO("mysql:host={$dbconfig['host']};dbname={$dbconfig['dbname']};port={$dbconfig['port']}",$dbconfig['user'],$dbconfig['pwd']);
+			}
 		} catch (\Exception $e) {
 			exit('链接数据库失败:' . $e->getMessage());
 		}
 		$this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_SILENT);
-		$this->db->exec("set sql_mode = ''");
-		$this->db->exec("set names utf8mb4");
-		$this->db->exec("set time_zone='+8:00'");
+		if ($this->driver === 'pgsql') {
+			$this->db->exec("SET TIME ZONE 'Asia/Shanghai'");
+		} else {
+			$this->db->exec("set sql_mode = ''");
+			$this->db->exec("set names utf8mb4");
+			$this->db->exec("set time_zone='+8:00'");
+		}
+	}
+
+	/** Translate the small set of MySQL-specific expressions used by this legacy application. */
+	private function dealSql($_sql){
+		$_sql = $this->dealPrefix($_sql);
+		if ($this->driver !== 'pgsql') return $_sql;
+		$_sql = str_replace('`', '"', $_sql);
+		$_sql = preg_replace('/DATE_SUB\(\s*([^,]+?)\s*,\s*INTERVAL\s+([0-9]+)\s+(SECOND|MINUTE|HOUR|DAY)\s*\)/i', '(\1 - INTERVAL \'\2 \3\')', $_sql);
+		$_sql = preg_replace('/DATE_ADD\(\s*([^,]+?)\s*,\s*INTERVAL\s+([0-9]+)\s+(SECOND|MINUTE|HOUR|DAY)\s*\)/i', '(\1 + INTERVAL \'\2 \3\')', $_sql);
+		$_sql = preg_replace('/COUNT\(\s*IF\(\s*([^,]+?)\s*,\s*1\s*,\s*NULL\s*\)\s*\)/i', 'COUNT(*) FILTER (WHERE \1)', $_sql);
+		$_sql = preg_replace('/ISNULL\(\s*([^()]+?)\s*\)/i', '(\1 IS NULL)', $_sql);
+		$_sql = preg_replace('/FIND_IN_SET\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)/i', "POSITION(',' || CAST(\\1 AS TEXT) || ',' IN ',' || \\2 || ',')", $_sql);
+		$_sql = preg_replace('/LIMIT\s+([^\s,]+)\s*,\s*([^\s]+)/i', 'LIMIT \2 OFFSET \1', $_sql);
+		$_sql = preg_replace('/\bWHERE\s+1(?=\s*(?:$|AND\b|OR\b|ORDER\b|GROUP\b|LIMIT\b))/i', 'WHERE TRUE', $_sql);
+		$_sql = preg_replace('/\bWHERE\s+0(?=\s*(?:$|AND\b|OR\b|ORDER\b|GROUP\b|LIMIT\b))/i', 'WHERE FALSE', $_sql);
+		$_sql = preg_replace('/\bCURDATE\(\)/i', 'CURRENT_DATE', $_sql);
+		$_sql = preg_replace('/\bCURTIME\(\)/i', 'CURRENT_TIME', $_sql);
+		if (preg_match('/^\s*SHOW TABLES LIKE\s+(.+)\s*$/i', $_sql, $m)) {
+			$_sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE ".$m[1];
+		}
+		return $_sql;
 	}
 
 	/**
@@ -36,6 +69,11 @@ class PdoHelper
 	public function setFetchStyle($_style)
 	{
 		$this->fetchStyle = $_style;
+	}
+
+	public function getDriver()
+	{
+		return $this->driver;
 	}
 
 	/**
@@ -156,6 +194,10 @@ class PdoHelper
 		}
 		$rowCount = $this->exec(($replace?"REPLACE":"INSERT")." INTO pre_".$table." (".implode(', ', $keys).") VALUES (".implode(', ', $marks).")", $values);
 		if($rowCount){
+			if ($this->driver === 'pgsql') {
+				$sequence = $this->db->query("SELECT pg_get_serial_sequence('".$this->prefix.$table."', 'id')")->fetchColumn();
+				return $sequence ? $this->db->lastInsertId($sequence) : $rowCount;
+			}
 			return $this->lastInsertId();
 		}else{
 			return false;
@@ -230,7 +272,7 @@ class PdoHelper
 	 */
 	public function exec($_sql, $_array = null)
 	{
-		$_sql = $this->dealPrefix($_sql);
+		$_sql = $this->dealSql($_sql);
 		if (is_array($_array)) {
 			$stmt = $this->db->prepare($_sql);
 			if($stmt) {
@@ -265,7 +307,7 @@ class PdoHelper
 	 */
 	public function query($_sql, $_array = null)
 	{
-		$_sql = $this->dealPrefix($_sql);
+		$_sql = $this->dealSql($_sql);
 		if (is_array($_array)) {
 			$stmt = $this->db->prepare($_sql);
 			if($stmt) {

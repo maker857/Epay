@@ -15,6 +15,9 @@ class Cache {
 		if (is_array($value)) $value = serialize($value);
 		global $DB;
 		if($expire) $expire = time() + $expire;
+		if($DB->getDriver() === 'pgsql'){
+			return $DB->exec("INSERT INTO pre_cache (k,v,expire) VALUES (:key,:value,:expire) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v,expire=EXCLUDED.expire", [':key'=>$key, ':value'=>$value, ':expire'=>$expire]);
+		}
 		return $DB->exec("REPLACE INTO pre_cache VALUES (:key, :value, :expire)", [':key'=>$key, ':value'=>$value, ':expire'=>$expire]);
 	}
 	public function pre_fetch(){

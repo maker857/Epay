@@ -38,16 +38,6 @@
 
 ---
 
-## 打赏二维码
-
-如果你觉得对你有帮助，欢迎打赏支持 ❤️
-
-### 微信打赏
-<img src="https://cdn.nodeimage.com/i/kgpolIW90QcsVO85dhO0li6ZDj40KttH.webp" width="180" />
-
-
----
-
 ## 推荐插件
 
 推荐使用 **Bepusdt** 插件进行 USDT（TRC20）收款。  
@@ -58,3 +48,291 @@ Bepusdt 是适用于彩虹易支付系统的 USDT 收款插件，收到的货币
 
 ---
 
+## Docker 部署教程
+
+Docker 版本包含以下服务：
+
+- `app`：PHP 8.3 + Apache，运行易支付程序
+- `db`：PostgreSQL 17，存储系统配置、商户和订单数据
+- `epay-postgres`：PostgreSQL 数据卷，容器重启或重新构建后数据仍然保留
+
+首次启动时，应用会等待 PostgreSQL 就绪，自动转换并导入 `install/install.sql`，创建数据表、系统密钥和管理员配置。因此不需要手动安装 PostgreSQL、创建数据库或访问 `/install/`。
+
+### 1. 环境要求
+
+- Linux、Windows 或 macOS
+- Docker Engine 24+ 或 Docker Desktop
+- Docker Compose V2（使用 `docker compose` 命令）
+- 建议至少 2 GB 可用内存和 2 GB 磁盘空间
+
+确认 Docker 可用：
+
+```bash
+docker --version
+docker compose version
+```
+
+### 2. 获取项目
+
+```bash
+git clone https://github.com/maker857/Epay.git
+cd Epay
+```
+
+### 3. 配置环境变量
+
+Linux 或 macOS：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+编辑 `.env`：
+
+```dotenv
+APP_PORT=8090
+POSTGRES_DB=epay
+POSTGRES_USER=epay
+POSTGRES_PASSWORD=请替换为足够长的随机数据库密码
+DB_PREFIX=pay
+ADMIN_USER=admin
+ADMIN_PASSWORD=请替换为高强度后台登录密码
+ADMIN_PAY_PASSWORD=请替换为高强度支付操作密码
+```
+
+Ubuntu 可使用以下命令生成 64 位十六进制随机密码：
+
+```bash
+openssl rand -hex 32
+```
+
+建议分别执行三次，将生成结果依次填写到 `POSTGRES_PASSWORD`、`ADMIN_PASSWORD` 和 `ADMIN_PAY_PASSWORD`，不要让三个密码使用相同的值。
+
+变量说明：
+
+| 变量 | 用途 |
+| --- | --- |
+| `APP_PORT` | 宿主机本地监听端口，默认 `8090` |
+| `POSTGRES_DB` | PostgreSQL 数据库名 |
+| `POSTGRES_USER` | PostgreSQL 用户名 |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码 |
+| `DB_PREFIX` | 数据表前缀，默认 `pay` |
+| `ADMIN_USER` | 后台管理员账号 |
+| `ADMIN_PASSWORD` | 后台登录密码 |
+| `ADMIN_PAY_PASSWORD` | 后台支付操作密码 |
+
+`.env` 包含敏感信息并已被 `.gitignore` 排除，不要将它提交到 Git 或发送给其他人。管理员配置只在数据库首次初始化时写入；数据库已经存在后修改 `.env` 不会自动重置后台密码。
+
+### 4. 启动服务
+
+```bash
+docker compose up -d --build
+```
+
+首次构建需要下载 PHP 和 PostgreSQL 镜像，耗时取决于网络速度。查看运行状态：
+
+```bash
+docker compose ps
+```
+
+正常情况下，`app` 和 `db` 都会显示为 `Up` 或 `healthy`。
+
+### 5. 访问系统
+
+- 本机网站首页：`http://127.0.0.1:8090/`
+- 本机管理后台：`http://127.0.0.1:8090/admin/`
+
+如果修改了 `APP_PORT`，请将地址中的 `8090` 替换成实际端口。Compose 默认将端口绑定到 `127.0.0.1`，公网无法直接访问，需要通过 aaPanel、Nginx 或 Caddy 反向代理。不要在云服务器安全组或防火墙中开放 `8090` 和 `5432`。
+
+### 6. 使用 aaPanel 配置域名和 HTTPS
+
+以下示例假设：
+
+- 域名：`pay.example.com`
+- 项目目录：`/www/wwwroot/epay`
+- Docker 本地监听地址：`http://127.0.0.1:8090`
+
+#### 6.1 配置域名解析
+
+在域名服务商处添加 A 记录，将 `pay.example.com` 指向服务器公网 IP。等待解析生效后，可使用以下命令确认：
+
+```bash
+ping pay.example.com
+```
+
+#### 6.2 在服务器启动容器
+
+通过 aaPanel 的终端或 SSH 执行：
+
+```bash
+cd /www/wwwroot/epay
+cp .env.example .env
+```
+
+修改 `.env` 中的数据库密码、管理员密码和支付密码，然后启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -I http://127.0.0.1:8090/
+```
+
+`curl` 返回 `HTTP/1.1 200 OK` 后再配置反向代理。
+
+#### 6.3 在 aaPanel 创建网站
+
+1. 进入 aaPanel 的 `Website` 页面，选择 `Add site`。
+2. 域名填写 `pay.example.com`。
+3. PHP 版本选择 `Static`，因为 PHP 已在 Docker 容器中运行。
+4. 不需要在 aaPanel 中创建 MySQL 或 PostgreSQL 数据库。
+5. 保存网站配置。
+
+#### 6.4 添加反向代理
+
+进入刚创建的网站，打开 `Reverse Proxy`，添加代理：
+
+| 配置项 | 值 |
+| --- | --- |
+| 代理名称 | `epay` |
+| 目标 URL | `http://127.0.0.1:8090` |
+| 发送域名 | `$host` 或当前域名 |
+| 内容替换 | 留空 |
+
+如果 aaPanel 提供自定义代理配置，请确认包含以下请求头：
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_read_timeout 300s;
+client_max_body_size 20m;
+```
+
+`X-Forwarded-Proto` 必须保留，应用会用它识别 aaPanel 前端的 HTTPS 请求并生成正确的支付回调地址。
+
+#### 6.5 配置 SSL
+
+1. 打开网站的 `SSL` 页面。
+2. 选择 `Let's Encrypt` 并为 `pay.example.com` 申请证书。
+3. 证书部署成功后开启 `Force HTTPS`。
+4. 访问 `https://pay.example.com/` 和 `https://pay.example.com/admin/` 验证页面。
+
+如果使用 Cloudflare，应将 SSL/TLS 模式设置为 `Full (strict)`，不要使用 `Flexible`。
+
+#### 6.6 防火墙建议
+
+公网只需开放：
+
+- `80/tcp`：HTTP，用于跳转 HTTPS 和证书验证
+- `443/tcp`：HTTPS
+- aaPanel 管理端口：建议仅允许管理员固定 IP 访问
+
+不要开放：
+
+- `8090/tcp`：Docker 应用本地端口
+- `5432/tcp`：PostgreSQL 端口
+
+配置完成后的请求链路为：
+
+```text
+用户 -> HTTPS 443 -> aaPanel Nginx -> 127.0.0.1:8090 -> Docker app -> Docker PostgreSQL
+```
+
+### 7. 日常管理
+
+查看全部日志：
+
+```bash
+docker compose logs -f
+```
+
+分别查看应用和数据库日志：
+
+```bash
+docker compose logs -f app
+docker compose logs -f db
+```
+
+停止并删除容器，但保留数据库：
+
+```bash
+docker compose down
+```
+
+重新启动：
+
+```bash
+docker compose up -d
+```
+
+修改 PHP 代码或 Dockerfile 后重新构建：
+
+```bash
+docker compose up -d --build
+```
+
+### 8. 数据库备份与恢复
+
+创建 PostgreSQL 自定义格式备份：
+
+```bash
+docker compose exec -T db pg_dump -U epay -d epay --format=custom --file=/tmp/epay.dump
+docker compose cp db:/tmp/epay.dump ./epay.dump
+```
+
+如果修改过 `POSTGRES_USER` 或 `POSTGRES_DB`，请替换命令中的用户名和数据库名。
+
+恢复备份前先停止应用，避免恢复过程中继续写入订单：
+
+```bash
+docker compose stop app
+docker compose cp ./epay.dump db:/tmp/epay.dump
+docker compose exec -T db pg_restore -U epay -d epay --clean --if-exists /tmp/epay.dump
+docker compose start app
+```
+
+### 9. 更新项目
+
+更新前应先备份数据库，然后执行：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+数据库自动导入只在空数据库首次启动时执行，不会在更新镜像时清空现有数据。如果新版本包含数据库结构更新，请先阅读对应版本说明并确认更新脚本兼容 PostgreSQL。
+
+### 10. 重置整个环境
+
+以下命令会删除容器和 PostgreSQL 数据卷，所有商户、订单及系统配置都会永久丢失：
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+仅在确认已有备份并确实需要全新安装时使用 `docker compose down -v`。
+
+### 11. 常见问题
+
+端口已被占用：修改 `.env` 中的 `APP_PORT`，例如改为 `8091`，同步修改 aaPanel 的反向代理目标，然后重新运行 `docker compose up -d`。
+
+aaPanel 显示 `502 Bad Gateway`：确认 `docker compose ps` 中 `app` 为健康状态，并在服务器执行 `curl -I http://127.0.0.1:8090/`。如果 `.env` 使用了其他端口，aaPanel 的目标 URL 必须保持一致。
+
+HTTPS 页面仍生成 HTTP 链接：检查反向代理是否传递 `X-Forwarded-Proto $scheme`，然后重新加载 aaPanel 的 Nginx 配置。
+
+应用持续重启：使用 `docker compose logs --tail=100 app` 查看初始化或数据库连接错误，并确认 `.env` 中所有必填密码均已配置。
+
+数据库未自动初始化：确认 `db` 服务状态为 `healthy`，再查看 `docker compose logs app`。初始化成功后 PostgreSQL 中应有 29 张业务表。
+
+无法从宿主机连接 PostgreSQL：这是预期行为。数据库端口没有暴露到宿主机，只允许 `app` 容器通过 Docker 内部网络访问。
+
+---

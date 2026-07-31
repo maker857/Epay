@@ -1,10 +1,11 @@
 <?php
 /*数据库配置*/
 $dbconfig=array(
-	'host' => 'localhost', //数据库服务器
-	'port' => 3306, //数据库端口
-	'user' => '', //数据库用户名
-	'pwd' => '', //数据库密码
-	'dbname' => '', //数据库名
-	'dbqz' => 'pay' //数据表前缀
+	'driver' => getenv('DB_DRIVER') ?: 'mysql',
+	'host' => getenv('DB_HOST') ?: 'localhost', //数据库服务器
+	'port' => (int)(getenv('DB_PORT') ?: 3306), //数据库端口
+	'user' => getenv('DB_USER') ?: '', //数据库用户名
+	'pwd' => getenv('DB_PASSWORD') ?: '', //数据库密码
+	'dbname' => getenv('DB_NAME') ?: '', //数据库名
+	'dbqz' => getenv('DB_PREFIX') ?: 'pay' //数据表前缀
 );
