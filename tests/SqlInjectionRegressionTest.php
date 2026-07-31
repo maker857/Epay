@@ -18,6 +18,12 @@ $checks = [
 		'daddslashes($_POST[\'starttime\'])',
 		'daddslashes($_POST[\'endtime\'])',
 	],
+	'admin/ajax_order.php' => ['{$_POST[\'column\']}', '{$_POST[\'value\']}', '{$_POST[\'starttime\']}', '{$_POST[\'endtime\']}', '{$_POST[\'applyid\']}'],
+	'admin/ajax_transfer.php' => ['{$_POST[\'column\']}', '{$_POST[\'value\']}', '{$_POST[\'starttime\']}', '{$_POST[\'endtime\']}'],
+	'admin/ajax_profitsharing.php' => ['{$_POST[\'column\']}', '{$_POST[\'value\']}', '{$_POST[\'starttime\']}', '{$_POST[\'endtime\']}'],
+	'admin/download.php' => ['{$_GET[\'column\']}', '{$_GET[\'value\']}', '{$_GET[\'starttime\']}', '{$_GET[\'endtime\']}'],
+	'user/download.php' => ['\'{$kw}\'', '\'{$starttime}', '\'{$endtime}'],
+	'includes/lib/api/Merchant.php' => ['uid=\'{$pid}\'', 'A.status=\'{$status}\''],
 ];
 
 $failures = [];
