@@ -9,6 +9,7 @@ class PdoHelper
 	private $prefix;
 	private $errorInfo;
 	private $driver = 'mysql';
+	private $transactionDepth = 0;
 
 	/**
 	 * PdoHelper constructor.
@@ -195,8 +196,17 @@ class PdoHelper
 		$rowCount = $this->exec(($replace?"REPLACE":"INSERT")." INTO pre_".$table." (".implode(', ', $keys).") VALUES (".implode(', ', $marks).")", $values);
 		if($rowCount){
 			if ($this->driver === 'pgsql') {
-				$sequence = $this->db->query("SELECT pg_get_serial_sequence('".$this->prefix.$table."', 'id')")->fetchColumn();
-				return $sequence ? $this->db->lastInsertId($sequence) : $rowCount;
+				// Legacy tables use different primary-key names (for example uid on
+				// pre_user), while some tables have no generated key at all.
+				$sequenceStmt = $this->db->prepare("SELECT a.attname, pg_get_serial_sequence(:table_name_seq, a.attname) FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) WHERE i.indrelid=to_regclass(:table_name_reg) AND i.indisprimary LIMIT 1");
+				if (!$sequenceStmt || !$sequenceStmt->execute([':table_name_seq' => $this->prefix.$table, ':table_name_reg' => $this->prefix.$table])) {
+					return $rowCount;
+				}
+				$sequence = $sequenceStmt->fetchColumn(1);
+				if (!$sequence) {
+					return $rowCount;
+				}
+				return $this->db->lastInsertId($sequence);
 			}
 			return $this->lastInsertId();
 		}else{
@@ -429,41 +439,80 @@ class PdoHelper
 	//开启事务
 	public function beginTransaction()
 	{
-		return $this->db->beginTransaction();
+		if ($this->transactionDepth === 0) {
+			$result = $this->db->beginTransaction();
+		} else {
+			$result = $this->db->exec('SAVEPOINT pdo_helper_'.$this->transactionDepth) !== false;
+		}
+		if ($result) $this->transactionDepth++;
+		return $result;
 	}
 
 	//提交事务
 	public function commit()
 	{
-		return $this->db->commit();
+		if ($this->transactionDepth <= 0) return false;
+		if ($this->transactionDepth === 1) {
+			$result = $this->db->commit();
+			if ($result) $this->transactionDepth = 0;
+			return $result;
+		}
+		$savepoint = 'pdo_helper_'.($this->transactionDepth - 1);
+		$result = $this->db->exec('RELEASE SAVEPOINT '.$savepoint) !== false;
+		if ($result) $this->transactionDepth--;
+		return $result;
 	}
 
 	//回滚事务
 	public function rollBack()
 	{
-		return $this->db->rollBack();
+		if ($this->transactionDepth <= 0) return false;
+		if ($this->transactionDepth === 1) {
+			$result = $this->db->rollBack();
+			if ($result) $this->transactionDepth = 0;
+			return $result;
+		}
+		$savepoint = 'pdo_helper_'.($this->transactionDepth - 1);
+		$rolledBack = $this->db->exec('ROLLBACK TO SAVEPOINT '.$savepoint) !== false;
+		if ($rolledBack) {
+			$this->db->exec('RELEASE SAVEPOINT '.$savepoint);
+			$this->transactionDepth--;
+		}
+		return $rolledBack;
+	}
+
+	public function inTransaction()
+	{
+		return $this->transactionDepth > 0;
+	}
+
+	public function getTransactionDepth()
+	{
+		return $this->transactionDepth;
 	}
 
 	//事务
 	public function transaction($action){
 		if (is_callable($action))
 		{
-			$this->db->beginTransaction();
+			if (!$this->beginTransaction()) {
+				throw new \RuntimeException('Unable to start database transaction: '.$this->error());
+			}
 
 			try {
 				$result = $action($this);
 
 				if ($result === false)
 				{
-					$this->db->rollBack();
+					$this->rollBack();
 				}
 				else
 				{
-					$this->db->commit();
+					$this->commit();
 				}
 			}
-			catch (\Exception $e) {
-				$this->db->rollBack();
+			catch (\Throwable $e) {
+				$this->rollBack();
 				throw $e;
 			}
 

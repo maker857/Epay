@@ -343,8 +343,24 @@ class Payment {
     // 订单回调处理
     static public function processOrder($isnotify, $order, $api_trade_no, $buyer = null, $bill_trade_no = null, $bill_mch_trade_no = null, $end_time = null){
         global $DB,$conf,$siteurl;
-        if($order['status']==0 || $order['status']==4){
-            if($DB->exec("UPDATE `pre_order` SET `status`=1 WHERE `trade_no`='".$order['trade_no']."'")){
+        $initialTransactionDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()){
+            throw new \RuntimeException('Unable to start payment callback transaction: '.$DB->error());
+        }
+        try {
+            // Lock and re-read the order so concurrent/repeated callbacks cannot
+            // both enter the financial processing branch.
+            $currentOrder = $DB->getRow("SELECT * FROM pre_order WHERE trade_no=:trade_no FOR UPDATE", [':trade_no'=>$order['trade_no']]);
+            if(!$currentOrder){
+                $DB->rollBack();
+                return;
+            }
+            $order = array_merge($order, $currentOrder);
+            if(in_array((int)$currentOrder['status'], [0, 4], true)){
+                $claimed = $DB->exec("UPDATE pre_order SET status=1 WHERE trade_no=:trade_no AND status IN (0,4)", [':trade_no'=>$order['trade_no']]);
+                if($claimed !== 1){
+                    throw new \RuntimeException('Unable to claim payment order for processing: '.$DB->error());
+                }
 
                 $data = ['endtime'=>'NOW()', 'date'=>'CURDATE()'];
                 if(!empty($api_trade_no)){
@@ -365,23 +381,31 @@ class Payment {
                 $DB->update('order', $data, ['trade_no'=>$order['trade_no']]);
 
                 processOrder($order, $isnotify);
+            }elseif(empty($currentOrder['api_trade_no']) && !empty($api_trade_no)){
+                $data = ['api_trade_no'=>$api_trade_no];
+                if(!empty($buyer) && empty($currentOrder['buyer'])) $data['buyer'] = $buyer;
+                if(!empty($bill_trade_no)) $data['bill_trade_no'] = $bill_trade_no;
+                if(!empty($bill_mch_trade_no)) $data['bill_mch_trade_no'] = $bill_mch_trade_no;
+                if(!empty($end_time)){
+                    $data['endtime'] = $end_time;
+                    $data['date'] = date('Y-m-d', strtotime($end_time));
+                }
+                $DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]);
+            }elseif(empty($currentOrder['buyer']) && !empty($buyer)){
+                $data = ['buyer'=>$buyer];
+                $DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]);
             }
-        }elseif(empty($order['api_trade_no']) && !empty($api_trade_no)){
-            $data = ['api_trade_no'=>$api_trade_no];
-            if(!empty($buyer) && empty($order['buyer'])) $data['buyer'] = $buyer;
-            if(!empty($bill_trade_no)) $data['bill_trade_no'] = $bill_trade_no;
-            if(!empty($bill_mch_trade_no)) $data['bill_mch_trade_no'] = $bill_mch_trade_no;
-            if(!empty($end_time)){
-                $data['endtime'] = $end_time;
-                $data['date'] = date('Y-m-d', strtotime($end_time));
+            if($isnotify && $order['settle']>0){
+                $DB->update('order', ['settle'=>$order['settle']], ['trade_no'=>$currentOrder['trade_no']]);
             }
-            $DB->update('order', $data, ['trade_no'=>$order['trade_no']]);
-        }elseif(empty($order['buyer']) && !empty($buyer)){
-            $data['buyer'] = $buyer;
-            $DB->update('order', $data, ['trade_no'=>$order['trade_no']]);
-        }
-        if($isnotify && $order['settle']>0){
-            $DB->update('order', ['settle'=>$order['settle']], ['trade_no'=>$order['trade_no']]);
+            if(!$DB->commit()){
+                throw new \RuntimeException('Unable to commit payment callback transaction: '.$DB->error());
+            }
+        } catch(\Throwable $e) {
+            while($DB->getTransactionDepth() > $initialTransactionDepth){
+                if(!$DB->rollBack()) break;
+            }
+            throw $e;
         }
         if(!$isnotify){
             include_once SYSTEM_ROOT.'txprotect.php';
