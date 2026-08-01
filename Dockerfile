@@ -1,4 +1,4 @@
-FROM composer:2.8 AS composer
+FROM composer:2.8.12 AS composer
 
 FROM php:8.3.8-apache-bookworm
 
