@@ -51,6 +51,7 @@ services:
       - /var/lock/apache2:rw,noexec,nosuid,nodev
       - /var/log/apache2:rw,noexec,nosuid,nodev
       - /var/cache/apache2:rw,noexec,nosuid,nodev
+      - /var/lib/php/sessions:rw,noexec,nosuid,nodev,uid=33,gid=33,mode=1733
     volumes:
       - epay-uploads:/var/www/html/assets/uploads
       - epay-plugin-logs:/var/www/html/plugins/sandpay/logs

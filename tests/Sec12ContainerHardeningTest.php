@@ -10,6 +10,10 @@ if ($dockerfile === false || $compose === false) {
     throw new RuntimeException('Docker configuration files are missing');
 }
 
+if (!is_writable('/var/lib/php/sessions')) {
+    throw new RuntimeException('PHP session save path is not writable');
+}
+
 if (!is_file($lock)) {
     throw new RuntimeException('includes/composer.lock is missing');
 }
