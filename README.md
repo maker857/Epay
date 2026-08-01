@@ -65,6 +65,8 @@ Docker 版本包含以下服务：
 - Docker Compose V2（使用 `docker compose` 命令）
 - 建议至少 2 GB 可用内存和 2 GB 磁盘空间
 
+Ubuntu 尚未安装 Docker 或遇到 `Unable to locate package docker-compose-plugin` 时，请参考：[Ubuntu Docker Compose 安装指南](docs/docker-compose-install.md)。
+
 确认 Docker 可用：
 
 ```bash
@@ -207,14 +209,25 @@ curl -I http://127.0.0.1:8090/
 如果 aaPanel 提供自定义代理配置，请确认包含以下请求头：
 
 ```nginx
-proxy_http_version 1.1;
-proxy_set_header Host $host;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_read_timeout 300s;
-client_max_body_size 20m;
+location / {
+    proxy_pass http://127.0.0.1:8090;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 300s;
+
+    client_max_body_size 20m;
+    proxy_buffering off;
+}
 ```
+
+> aaPanel 的图形化反向代理规则与上面的完整 `location /` 配置二选一即可。不要同时添加两份 `location /`，否则 Nginx 配置检查会因重复定义而失败。支付页面建议关闭 aaPanel 的代理缓存。
 
 `X-Forwarded-Proto` 必须保留，应用会用它识别 aaPanel 前端的 HTTPS 请求并生成正确的支付回调地址。
 
