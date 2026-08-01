@@ -1,5 +1,125 @@
 <?php
 
+class PayPalWebhookSecurity
+{
+	private const ALLOWED_CERT_HOSTS = [
+		'api-m.paypal.com',
+		'api-m.sandbox.paypal.com',
+	];
+	private const CERT_PATH_PREFIX = '/v1/notifications/certs/';
+	private const MAX_CERT_BYTES = 1048576;
+
+	static public function validateCertUrl(string $url): bool
+	{
+		$url = trim($url);
+		if ($url === '') {
+			return false;
+		}
+
+		$parts = parse_url($url);
+		if (!is_array($parts)) {
+			return false;
+		}
+		if (strtolower($parts['scheme'] ?? '') !== 'https') {
+			return false;
+		}
+		if (isset($parts['user']) || isset($parts['pass'])) {
+			return false;
+		}
+		if (isset($parts['port']) && (int)$parts['port'] !== 443) {
+			return false;
+		}
+
+		$host = strtolower($parts['host'] ?? '');
+		if (!in_array($host, self::ALLOWED_CERT_HOSTS, true)) {
+			return false;
+		}
+
+		$path = $parts['path'] ?? '';
+		return strpos($path, self::CERT_PATH_PREFIX) === 0;
+	}
+
+	static public function isPublicIp(string $ip): bool
+	{
+		return filter_var(
+			$ip,
+			FILTER_VALIDATE_IP,
+			FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+		) !== false;
+	}
+
+	static public function fetchCertificate(string $url): string
+	{
+		if (!self::validateCertUrl($url)) {
+			throw new RuntimeException('invalid PayPal certificate URL');
+		}
+
+		$parts = parse_url($url);
+		$host = strtolower($parts['host']);
+		$ips = self::resolveHost($host);
+		if (empty($ips)) {
+			throw new RuntimeException('PayPal certificate host cannot be resolved');
+		}
+		foreach ($ips as $ip) {
+			if (!self::isPublicIp($ip)) {
+				throw new RuntimeException('PayPal certificate host resolved to a non-public IP');
+			}
+		}
+
+		$ip = $ips[0];
+		$resolveIp = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) ? '['.$ip.']' : $ip;
+		$body = '';
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+		curl_setopt($ch, CURLOPT_HEADER, false);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+		curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+		curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+		curl_setopt($ch, CURLOPT_RESOLVE, [$host.':443:'.$resolveIp]);
+		curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, string $chunk) use (&$body): int {
+			$body .= $chunk;
+			if (strlen($body) > self::MAX_CERT_BYTES) {
+				return 0;
+			}
+			return strlen($chunk);
+		});
+
+		$ok = curl_exec($ch);
+		$httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+		if ($ok !== true || $httpCode < 200 || $httpCode >= 300 || $body === '') {
+			throw new RuntimeException('PayPal certificate download failed');
+		}
+
+		$cert = openssl_x509_read($body);
+		if ($cert === false) {
+			throw new RuntimeException('PayPal certificate response is invalid');
+		}
+		if (function_exists('openssl_x509_free')) {
+			openssl_x509_free($cert);
+		}
+		return $body;
+	}
+
+	private static function resolveHost(string $host): array
+	{
+		$ips = [];
+		foreach (dns_get_record($host, DNS_A + DNS_AAAA) ?: [] as $record) {
+			if (!empty($record['ip'])) {
+				$ips[] = $record['ip'];
+			}
+			if (!empty($record['ipv6'])) {
+				$ips[] = $record['ipv6'];
+			}
+		}
+		return array_values(array_unique($ips));
+	}
+}
+
 class paypal_plugin
 {
 	static public $info = [
@@ -176,9 +296,27 @@ class paypal_plugin
         $sign_string = $_SERVER['HTTP_PAYPAL_TRANSMISSION_ID'].'|'.$_SERVER['HTTP_PAYPAL_TRANSMISSION_TIME'].'|'.$channel['appsecret'].'|'.$crc32;
 
         // 通过PAYPAL-CERT-URL头信息去拿公钥
-        $public_key = openssl_pkey_get_public(get_curl($_SERVER['HTTP_PAYPAL_CERT_URL']));
-        $details = openssl_pkey_get_details($public_key);
-        $verify = openssl_verify($sign_string, base64_decode($_SERVER['HTTP_PAYPAL_TRANSMISSION_SIG']), $details['key'], 'SHA256');
+		try {
+			$certUrl = trim((string)($_SERVER['HTTP_PAYPAL_CERT_URL'] ?? ''));
+			$signature = base64_decode((string)($_SERVER['HTTP_PAYPAL_TRANSMISSION_SIG'] ?? ''), true);
+			if ($signature === false || $signature === '') {
+				exit('签名数据为空');
+			}
+
+			$public_key = openssl_pkey_get_public(PayPalWebhookSecurity::fetchCertificate($certUrl));
+			if ($public_key === false) {
+				exit('签名验证失败');
+			}
+
+			$details = openssl_pkey_get_details($public_key);
+			if (!$details || empty($details['key'])) {
+				exit('签名验证失败');
+			}
+
+			$verify = openssl_verify($sign_string, $signature, $details['key'], 'SHA256');
+		} catch (Throwable $e) {
+			exit('签名验证失败');
+		}
         if($verify != 1)
         {
 			exit('签名验证失败');
