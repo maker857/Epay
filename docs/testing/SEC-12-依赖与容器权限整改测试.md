@@ -18,6 +18,7 @@
 | 构建时按锁文件安装 | `docker compose build app` | PASS |
 | 依赖漏洞扫描 | `docker run --rm -v "${PWD}/includes:/app" -w /app composer:2.8 audit --format=json --no-interaction` | 已执行；发现 `mdanter/ecc` 的 CVE-2024-33851 及 critical 侧信道公告，已记录残余风险 |
 | 只读根文件系统与 capabilities | `docker inspect epay-app-1 --format ...` | PASS：只读根、`no-new-privileges:true`、`CapDrop=ALL`，仅添加 `CHOWN` 和 `NET_BIND_SERVICE` |
+| PHP Session/验证码写入 | `docker compose run --rm -v "${PWD}:/var/www/html" app php tests/Sec12ContainerHardeningTest.php` | PASS：`/var/lib/php/sessions` 使用可写 tmpfs，验证码和 CSRF Session 可持久化 |
 | Docker 服务健康检查 | `docker compose up -d --force-recreate app; docker compose ps` | PASS：应用和 PostgreSQL 均为 `healthy` |
 | 支付回调回归 | `docker compose run --rm app php tests/PaymentCallbackIdempotencyTest.php` 等三项 | PASS |
 | 安全响应头 | `Invoke-WebRequest http://127.0.0.1:8090/index.php` | PASS：包含 CSP、X-Content-Type-Options、Referrer-Policy、Permissions-Policy |
