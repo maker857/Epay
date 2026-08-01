@@ -37,11 +37,30 @@ services:
       ADMIN_PAY_PASSWORD: ${ADMIN_PAY_PASSWORD:?Set ADMIN_PAY_PASSWORD in .env}
     ports:
       - "127.0.0.1:${APP_PORT:-8090}:80"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/apache2:rw,noexec,nosuid,nodev
+      - /var/lock/apache2:rw,noexec,nosuid,nodev
+      - /var/log/apache2:rw,noexec,nosuid,nodev
+      - /var/cache/apache2:rw,noexec,nosuid,nodev
+    volumes:
+      - epay-uploads:/var/www/html/assets/uploads
+      - epay-plugin-logs:/var/www/html/plugins/sandpay/logs
     networks:
       - epay
 
 volumes:
   epay-postgres:
+  epay-uploads:
+  epay-plugin-logs:
 
 networks:
   epay:
