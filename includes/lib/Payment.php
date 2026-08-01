@@ -5,6 +5,16 @@ use Exception;
 
 class Payment {
 
+    static public function normalizeCompletionTime($end_time){
+        if($end_time === null || $end_time === '') return null;
+        $timestamp = strtotime((string)$end_time);
+        if($timestamp === false) return null;
+        return [
+            'endtime' => $end_time,
+            'date' => date('Y-m-d', $timestamp),
+        ];
+    }
+
     //生成待签名字符串
     static private function getSignContent($data){
         ksort($data);
@@ -373,10 +383,8 @@ class Payment {
                 }
                 if(!empty($bill_trade_no)) $data['bill_trade_no'] = $bill_trade_no;
                 if(!empty($bill_mch_trade_no)) $data['bill_mch_trade_no'] = $bill_mch_trade_no;
-                if(!empty($end_time)){
-                    $data['endtime'] = $end_time;
-                    $date['date'] = date('Y-m-d', strtotime($end_time));
-                }
+                $completion = self::normalizeCompletionTime($end_time);
+                if($completion !== null) $data = array_merge($data, $completion);
                 if($order['settle']>0) $data['settle'] = $order['settle'];
                 $DB->update('order', $data, ['trade_no'=>$order['trade_no']]);
 
@@ -386,10 +394,8 @@ class Payment {
                 if(!empty($buyer) && empty($currentOrder['buyer'])) $data['buyer'] = $buyer;
                 if(!empty($bill_trade_no)) $data['bill_trade_no'] = $bill_trade_no;
                 if(!empty($bill_mch_trade_no)) $data['bill_mch_trade_no'] = $bill_mch_trade_no;
-                if(!empty($end_time)){
-                    $data['endtime'] = $end_time;
-                    $data['date'] = date('Y-m-d', strtotime($end_time));
-                }
+                $completion = self::normalizeCompletionTime($end_time);
+                if($completion !== null) $data = array_merge($data, $completion);
                 $DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]);
             }elseif(empty($currentOrder['buyer']) && !empty($buyer)){
                 $data = ['buyer'=>$buyer];
