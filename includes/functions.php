@@ -120,25 +120,47 @@ function get_curl($url, $post=0, $referer=0, $cookie=0, $header=0, $ua=0, $nobao
 	curl_close($ch);
 	return $ret;
 }
-function real_ip($type=0){
-	$ip = $_SERVER['REMOTE_ADDR'];
-	if($type<=0 && isset($_SERVER['HTTP_X_FORWARDED_FOR']) && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-		$ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-		foreach ($ips as $xip) {
-			$xip = trim($xip);
-			if (filter_var($xip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-				$ip = $xip;
-				break;
-			}
-		}
-	} elseif ($type<=0 && isset($_SERVER['HTTP_CLIENT_IP']) && filter_var($_SERVER['HTTP_CLIENT_IP'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-		$ip = $_SERVER['HTTP_CLIENT_IP'];
-	} elseif ($type<=1 && isset($_SERVER['HTTP_CF_CONNECTING_IP']) && filter_var($_SERVER['HTTP_CF_CONNECTING_IP'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-		$ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
-	} elseif ($type<=1 && isset($_SERVER['HTTP_X_REAL_IP']) && filter_var($_SERVER['HTTP_X_REAL_IP'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-		$ip = $_SERVER['HTTP_X_REAL_IP'];
+function ip_matches_cidr($ip, $cidr){
+	$parts = explode('/', trim((string)$cidr), 2);
+	$network = $parts[0] ?? '';
+	$ipBinary = @inet_pton($ip);
+	$networkBinary = @inet_pton($network);
+	if($ipBinary === false || $networkBinary === false || strlen($ipBinary) !== strlen($networkBinary)) return false;
+	$bits = isset($parts[1]) ? (int)$parts[1] : strlen($networkBinary) * 8;
+	if($bits < 0 || $bits > strlen($networkBinary) * 8) return false;
+	$fullBytes = intdiv($bits, 8);
+	$remainingBits = $bits % 8;
+	if($fullBytes > 0 && substr($ipBinary, 0, $fullBytes) !== substr($networkBinary, 0, $fullBytes)) return false;
+	if($remainingBits === 0) return true;
+	$mask = chr((0xFF << (8 - $remainingBits)) & 0xFF);
+	return (ord($ipBinary[$fullBytes]) & ord($mask)) === (ord($networkBinary[$fullBytes]) & ord($mask));
+}
+function is_trusted_proxy_ip($ip){
+	global $conf;
+	$configured = getenv('EPAY_TRUSTED_PROXY_IPS');
+	if($configured === false && isset($conf['trusted_proxy_ips'])) $configured = $conf['trusted_proxy_ips'];
+	if(!is_string($configured) || trim($configured) === '') return false;
+	foreach(preg_split('/[,\s]+/', $configured, -1, PREG_SPLIT_NO_EMPTY) as $proxyRange){
+		if(ip_matches_cidr($ip, $proxyRange)) return true;
 	}
-	return $ip;
+	return false;
+}
+function real_ip($type=0){
+	$remote = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+	if(!filter_var($remote, FILTER_VALIDATE_IP)) return '0.0.0.0';
+	if(!is_trusted_proxy_ip($remote)) return $remote;
+	$candidates = [];
+	if($type <= 0) $candidates[] = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+	if($type <= 0) $candidates[] = $_SERVER['HTTP_CLIENT_IP'] ?? '';
+	if($type <= 1) $candidates[] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '';
+	if($type <= 1) $candidates[] = $_SERVER['HTTP_X_REAL_IP'] ?? '';
+	foreach($candidates as $candidate){
+		foreach(explode(',', (string)$candidate) as $value){
+			$value = trim($value);
+			if(filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return $value;
+		}
+	}
+	return $remote;
 }
 function get_ip_city($ip)
 {
