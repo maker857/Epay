@@ -143,7 +143,7 @@ include './head.php';
       <div class="panel panel-primary">
         <div class="panel-heading"><h3 class="panel-title">管理员登录</h3></div>
         <div class="panel-body">
-          <form class="form-horizontal" id="login-form" role="form" onsubmit="return submitlogin()">
+          <form class="form-horizontal" id="login-form" role="form" onsubmit="return submitlogin(event)">
             <div class="input-group">
               <span class="input-group-addon"><span class="glyphicon glyphicon-user"></span></span>
               <input type="text" name="user" value="" class="form-control input-lg" placeholder="用户名" required="required"/>
@@ -206,7 +206,9 @@ include './head.php';
 <script>
 const PUBLIC_KEY_PEM = `<?php echo base64ToPem($conf['public_key'], 'PUBLIC KEY')?>`;
 var csrf_token = <?php echo json_encode($csrf_token, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)?>;
-function submitlogin(){
+function submitlogin(event){
+  if(event && typeof event.preventDefault === 'function') event.preventDefault();
+  try {
   var enc_type = '0';
   var user = $("input[name='user']").val();
   var pass = $("input[name='pass']").val();
@@ -246,6 +248,14 @@ function submitlogin(){
       layer.msg('服务器错误');
     }
   });
+  } catch (error) {
+    console.error('Login form error:', error);
+    if (typeof layer !== 'undefined' && layer.alert) {
+      layer.alert('登录脚本加载失败，请刷新页面后重试', {icon: 2});
+    } else {
+      alert('登录脚本加载失败，请刷新页面后重试');
+    }
+  }
   return false;
 }
 function doTotp(){
