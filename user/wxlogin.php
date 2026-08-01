@@ -27,7 +27,7 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
 			$session=\lib\PasswordHasher::sessionFingerprint($uid, $key, (string)$userrow['pwd'], $password_hash);
 			$expiretime=time()+2592000;
 			$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
-			setcookie("user_token", $token, time() + 2592000);
+			secure_setcookie('user_token', $token, time() + 2592000, '/user');
 			$DB->exec("update `pre_user` set `lasttime`=NOW() where `uid`='$uid'");
 			$result=array("code"=>0,"msg"=>"登录成功！正在跳转到用户中心","url"=>"./");
 		}elseif($islogin2==1){
@@ -84,7 +84,7 @@ $_SESSION['openid'] = $openId;
 		$session=\lib\PasswordHasher::sessionFingerprint($uid, $key, (string)$userrow['pwd'], $password_hash);
 		$expiretime=time()+604800;
 		$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
-		setcookie("user_token", $token, time() + 604800);
+		secure_setcookie('user_token', $token, time() + 604800, '/user');
 		@header('Content-Type: text/html; charset=UTF-8');
 		exit("<script language='javascript'>window.location.href='./{$redirect_url}';</script>");
 	}elseif($islogin2==1){

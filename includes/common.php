@@ -13,18 +13,18 @@ define('PLUGIN_ROOT', ROOT.'plugins/');
 date_default_timezone_set('Asia/Shanghai');
 $date = date("Y-m-d H:i:s");
 
+ini_set('session.use_strict_mode', '1');
+$sessionSecure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+    || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+    || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $sessionSecure,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 if(!isset($nosession) || !$nosession){
-    ini_set('session.use_strict_mode', '1');
-    $sessionSecure = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
-        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path' => '/',
-        'secure' => $sessionSecure,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
     session_start();
 }
 
