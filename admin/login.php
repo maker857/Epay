@@ -205,6 +205,7 @@ include './head.php';
 <script src="<?php echo $cdnpublic?>jsencrypt/3.5.4/jsencrypt.min.js"></script>
 <script>
 const PUBLIC_KEY_PEM = `<?php echo base64ToPem($conf['public_key'], 'PUBLIC KEY')?>`;
+var csrf_token = <?php echo json_encode($csrf_token, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)?>;
 function submitlogin(){
   var enc_type = '0';
   var user = $("input[name='user']").val();
