@@ -1,6 +1,5 @@
 <?php
 @header('Content-Type: text/html; charset=UTF-8');
-@header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data:; font-src 'self' data: https:; connect-src 'self'; form-action 'self'");
 
 $admin_cdnpublic = 0;
 if($admin_cdnpublic==1){
