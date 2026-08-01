@@ -291,10 +291,12 @@ class PdoHelper
 					return $stmt->rowCount();
 				}else{
 					$this->errorInfo = $stmt->errorInfo();
+					$this->logTransactionError($_sql);
 					return false;
 				}
 			}else{
 				$this->errorInfo = $this->db->errorInfo();
+				$this->logTransactionError($_sql);
 				return false;
 			}
 		} else {
@@ -303,6 +305,7 @@ class PdoHelper
 				return $result;
 			}else{
 				$this->errorInfo = $this->db->errorInfo();
+				$this->logTransactionError($_sql);
 				return false;
 			}
 		}
@@ -325,10 +328,12 @@ class PdoHelper
 					return $stmt;
 				}else{
 					$this->errorInfo = $stmt->errorInfo();
+					$this->logTransactionError($_sql);
 					return false;
 				}
 			}else{
 				$this->errorInfo = $this->db->errorInfo();
+				$this->logTransactionError($_sql);
 				return false;
 			}
 		} else {
@@ -336,8 +341,16 @@ class PdoHelper
 				return $stmt;
 			}else{
 				$this->errorInfo = $this->db->errorInfo();
+				$this->logTransactionError($_sql);
 				return false;
 			}
+		}
+	}
+
+	private function logTransactionError($sql)
+	{
+		if ($this->transactionDepth > 0) {
+			error_log('[db transaction] '.$this->error().' SQL='.preg_replace('/\s+/', ' ', trim($sql)));
 		}
 	}
 
