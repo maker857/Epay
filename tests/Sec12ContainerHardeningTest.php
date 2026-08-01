@@ -30,7 +30,7 @@ foreach (['cccyun/alipay-sdk', 'cccyun/wechatpay-sdk', 'cccyun/qqpay-sdk', 'lpil
     if (!$found) throw new RuntimeException("Missing locked package: {$package}");
 }
 
-foreach (['no-new-privileges:true', 'cap_drop:', 'read_only: true'] as $directive) {
+foreach (['no-new-privileges:true', 'cap_drop:', 'read_only: true', '/var/lib/php/sessions'] as $directive) {
     if (strpos($compose, $directive) === false) {
         throw new RuntimeException("Missing compose hardening directive: {$directive}");
     }
