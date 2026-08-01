@@ -210,6 +210,12 @@ curl -I http://127.0.0.1:8090/
 
 ```nginx
 location / {
+    # Epay 路由重写；必须放在 proxy_pass 前面
+    rewrite ^/pay/(.*)$ /pay.php?s=$1 last;
+    rewrite ^/api/(.*)$ /api.php?s=$1 last;
+    rewrite ^/doc/([a-zA-Z0-9_-]+)\.html$ /index.php?doc=$1 last;
+    rewrite ^/([a-zA-Z0-9_-]+)\.html$ /index.php?mod=$1 last;
+
     proxy_pass http://127.0.0.1:8090;
     proxy_http_version 1.1;
 
@@ -217,6 +223,7 @@ location / {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
 
     proxy_read_timeout 300s;
     proxy_connect_timeout 60s;
@@ -229,7 +236,21 @@ location / {
 
 > aaPanel 的图形化反向代理规则与上面的完整 `location /` 配置二选一即可。不要同时添加两份 `location /`，否则 Nginx 配置检查会因重复定义而失败。支付页面建议关闭 aaPanel 的代理缓存。
 
-`X-Forwarded-Proto` 必须保留，应用会用它识别 aaPanel 前端的 HTTPS 请求并生成正确的支付回调地址。
+如果站点全部由 Docker 提供，不要再配置从 aaPanel 网站目录直接读取图片、JavaScript 或 CSS 的正则 `location`。这类规则会绕过 Docker，容易加载到宿主机上的旧静态文件，造成页面脚本与后端版本不一致。确实需要由 Nginx 提供静态文件时，必须保证宿主机目录与当前 Docker 代码版本同步。
+
+`X-Forwarded-Proto` 必须保留，应用会用它识别 aaPanel 前端的 HTTPS 请求并生成正确的支付回调地址。修改配置后先检查并重载 Nginx：
+
+```bash
+nginx -t
+nginx -s reload
+```
+
+然后验证首页和支付路由均已进入同一个 Docker 应用：
+
+```bash
+curl -I https://pay.example.com/
+curl -I https://pay.example.com/pay/wxpay/test/
+```
 
 #### 6.5 配置 SSL
 
@@ -237,6 +258,8 @@ location / {
 2. 选择 `Let's Encrypt` 并为 `pay.example.com` 申请证书。
 3. 证书部署成功后开启 `Force HTTPS`。
 4. 访问 `https://pay.example.com/` 和 `https://pay.example.com/admin/` 验证页面。
+
+同一站点配置多个域名或支付子域名时，应把它们全部写入同一个 `server_name`，并确认这些域名解析到同一服务器、反向代理到同一个 Docker 地址。SSL 证书也必须覆盖每个域名；例如使用 `happypay.example.com` 时，该名称必须包含在证书的 SAN 中或由通配符证书覆盖。
 
 如果使用 Cloudflare，应将 SSL/TLS 模式设置为 `Full (strict)`，不要使用 `Flexible`。
 

@@ -866,7 +866,10 @@ class huifu_plugin
 		$client = new HuifuClient($config_info);
 
 		$data = json_decode($_POST['resp_data'], true);
-		if(!$data)return ['type'=>'html','data'=>'no data'];
+		if(!$data){
+			error_log('[huifu notify] trade_no='.TRADE_NO.' reason=no_data post_keys='.implode(',', array_keys($_POST)));
+			return ['type'=>'html','data'=>'no data'];
+		}
 
 		if($client->checkNotifySign($_POST['resp_data'], $_POST['sign'])){
 			if ($data['trans_stat'] == 'S') {
@@ -880,12 +883,16 @@ class huifu_plugin
 						$buyer = $data['wx_response']['sub_openid'];
 					}
 					processNotify($order, $api_trade_no, $buyer, $bill_trade_no, $bill_mch_trade_no);
+				}else{
+					error_log('[huifu notify] trade_no='.TRADE_NO.' reason=req_seq_mismatch req_seq_id='.($data['req_seq_id'] ?? '').' post_keys='.implode(',', array_keys($_POST)));
 				}
 				return ['type'=>'html','data'=>'RECV_ORD_ID_'.TRADE_NO];
 			}
+			error_log('[huifu notify] trade_no='.TRADE_NO.' reason=resp_code_fail trans_stat='.($data['trans_stat'] ?? '').' post_keys='.implode(',', array_keys($_POST)));
 			return ['type'=>'html','data'=>'resp_code fail'];
 		}
 		else {
+			error_log('[huifu notify] trade_no='.TRADE_NO.' reason=sign_fail post_keys='.implode(',', array_keys($_POST)));
 			return ['type'=>'html','data'=>'sign fail'];
 		}
 	}

@@ -19,6 +19,17 @@ $submit2=true;
 try{
 	$result = \lib\Plugin::loadForPay($s);
 	\lib\Payment::echoDefault($result);
-}catch(Exception $e){
+}catch(\Throwable $e){
+    $diagnostic = [
+        'route' => $s,
+        'method' => $_SERVER['REQUEST_METHOD'] ?? '',
+        'content_type' => $_SERVER['CONTENT_TYPE'] ?? '',
+        'post_keys' => array_keys($_POST),
+        'exception' => get_class($e),
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ];
+    error_log('[pay callback] '.json_encode($diagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 	sysmsg($e->getMessage());
 }

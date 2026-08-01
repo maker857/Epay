@@ -1,5 +1,6 @@
 <?php
 include("../includes/common.php");
+require_once SYSTEM_ROOT . 'lib/ChannelInput.php';
 if($islogin==1){}else exit("<script language='javascript'>window.location.href='./login.php';</script>");
 $act=isset($_GET['act'])?daddslashes($_GET['act']):null;
 
@@ -224,16 +225,16 @@ case 'saveChannel':
 	if($_POST['action'] == 'add'){
 		$name=trim($_POST['name']);
 		$rate=trim($_POST['rate']);
-		$costrate=trim($_POST['costrate']);
+		$costrate=\lib\ChannelInput::nullable($_POST['costrate'] ?? null);
 		$type=intval($_POST['type']);
 		$plugin=trim($_POST['plugin']);
 		$daytop=intval($_POST['daytop']);
 		$mode=intval($_POST['mode']);
-		$paymin=trim($_POST['paymin']);
-		$paymax=trim($_POST['paymax']);
+		$paymin=\lib\ChannelInput::nullable($_POST['paymin'] ?? null);
+		$paymax=\lib\ChannelInput::nullable($_POST['paymax'] ?? null);
 		$daymaxorder=intval($_POST['daymaxorder']);
 		$timestart=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestart']):null;
-		$timestop=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestop']):null;
+		$timestop=!isNullOrEmpty($_POST['timestop'] ?? null)?trim($_POST['timestop']):null;
 		if(empty($rate)) $rate = 100;
 		if(!preg_match('/^[0-9.]+$/',$rate)){
 			exit('{"code":-1,"msg":"分成比例不符合规则"}');
@@ -261,16 +262,16 @@ case 'saveChannel':
 		if(!$row) exit('{"code":-1,"msg":"当前支付通道不存在！"}');
 		$name=trim($_POST['name']);
 		$rate=trim($_POST['rate']);
-		$costrate=trim($_POST['costrate']);
+		$costrate=\lib\ChannelInput::nullable($_POST['costrate'] ?? null);
 		$type=intval($_POST['type']);
 		$plugin=trim($_POST['plugin']);
 		$daytop=intval($_POST['daytop']);
 		$mode=intval($_POST['mode']);
-		$paymin=trim($_POST['paymin']);
-		$paymax=trim($_POST['paymax']);
+		$paymin=\lib\ChannelInput::nullable($_POST['paymin'] ?? null);
+		$paymax=\lib\ChannelInput::nullable($_POST['paymax'] ?? null);
 		$daymaxorder=intval($_POST['daymaxorder']);
 		$timestart=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestart']):null;
-		$timestop=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestop']):null;
+		$timestop=!isNullOrEmpty($_POST['timestop'] ?? null)?trim($_POST['timestop']):null;
 		if(!preg_match('/^[0-9.]+$/',$rate)){
 			exit('{"code":-1,"msg":"分成比例不符合规则"}');
 		}
@@ -297,16 +298,16 @@ case 'saveChannel':
 		if(!$row) exit('{"code":-1,"msg":"当前支付通道不存在！"}');
 		$name=trim($_POST['name']);
 		$rate=trim($_POST['rate']);
-		$costrate=trim($_POST['costrate']);
+		$costrate=\lib\ChannelInput::nullable($_POST['costrate'] ?? null);
 		$type=intval($_POST['type']);
 		$plugin=trim($_POST['plugin']);
 		$daytop=intval($_POST['daytop']);
 		$mode=intval($_POST['mode']);
-		$paymin=trim($_POST['paymin']);
-		$paymax=trim($_POST['paymax']);
+		$paymin=\lib\ChannelInput::nullable($_POST['paymin'] ?? null);
+		$paymax=\lib\ChannelInput::nullable($_POST['paymax'] ?? null);
 		$daymaxorder=intval($_POST['daymaxorder']);
 		$timestart=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestart']):null;
-		$timestop=!isNullOrEmpty($_POST['timestart'])?trim($_POST['timestop']):null;
+		$timestop=!isNullOrEmpty($_POST['timestop'] ?? null)?trim($_POST['timestop']):null;
 		if(!preg_match('/^[0-9.]+$/',$rate)){
 			exit('{"code":-1,"msg":"分成比例不符合规则"}');
 		}
