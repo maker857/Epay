@@ -4,6 +4,7 @@
 
 - Session 启用 strict mode，并设置 `HttpOnly`、`SameSite=Lax`、路径和 HTTPS Secure 属性。
 - 管理员和商户认证 Cookie 统一通过 `secure_setcookie()` 设置。
+- 微信、支付宝、QQ OAuth 和 SSO 登录入口的认证 Cookie 也统一使用安全属性。
 - 新增基于 `random_bytes()` 的 CSRF Token，并使用 `hash_equals()` 校验。
 - 管理员登录、TOTP 登录、TOTP 配置、商户登录 AJAX 和插件刷新接入 CSRF 校验。
 - 支付插件刷新从 GET 链接改为 POST 表单，GET 请求不再执行刷新。
