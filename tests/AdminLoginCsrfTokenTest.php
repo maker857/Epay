@@ -20,6 +20,10 @@ if (strpos($login, 'csrf_token:csrf_token') === false) {
     throw new RuntimeException('Login request does not submit CSRF token');
 }
 
+if (strpos($login, 'onsubmit="return submitlogin(event)"') === false || strpos($login, 'event.preventDefault()') === false) {
+    throw new RuntimeException('Login form does not prevent default navigation');
+}
+
 if (strpos($headers, "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:") === false) {
     throw new RuntimeException('Global CSP does not explicitly allow required application scripts');
 }
