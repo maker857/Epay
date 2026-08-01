@@ -7,14 +7,13 @@ include("../includes/common.php");
 
 if(isset($_GET['logout'])){
 	if(!checkRefererHost())exit();
-	setcookie("user_token", "", time() - 2592000);
+	secure_setcookie('user_token', '', time() - 2592000, '/user');
 	@header('Content-Type: text/html; charset=UTF-8');
 	exit("<script language='javascript'>alert('您已成功注销本次登录！');window.location.href='./login.php';</script>");
 }elseif($islogin2==1){
 	exit("<script language='javascript'>alert('您已登录！');window.location.href='./';</script>");
 }
-$csrf_token = md5(mt_rand(0,999).time());
-$_SESSION['csrf_token'] = $csrf_token;
+$csrf_token = csrf_token();
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">

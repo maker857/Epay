@@ -27,7 +27,7 @@ case 'testpay':
 	$money=trim($_POST['money']);
 	$typeid=intval($_POST['typeid']);
 	$name = '支付测试';
-	if(!$_POST['csrf_token'] || $_POST['csrf_token']!=$_SESSION['csrf_token'])exit('{"code":-1,"msg":"CSRF TOKEN ERROR"}');
+	csrf_require();
 	if($money<=0 || !is_numeric($money) || !preg_match('/^[0-9.]+$/', $money))exit('{"code":-1,"msg":"金额不合法"}');
 	if($conf['pay_maxmoney']>0 && $money>$conf['pay_maxmoney'])exit('{"code":-1,"msg":"最大支付金额是'.$conf['pay_maxmoney'].'元"}');
 	if($conf['pay_minmoney']>0 && $money<$conf['pay_minmoney'])exit('{"code":-1,"msg":"最小支付金额是'.$conf['pay_minmoney'].'元"}');
@@ -107,7 +107,7 @@ case 'login':
 		$expiretime=time()+604800;
 		$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
 		ob_clean();
-		setcookie("user_token", $token, time() + 2592000);
+		secure_setcookie('user_token', $token, time() + 2592000, '/user');
 		$DB->exec("update `pre_user` set `lasttime`=NOW() where `uid`='$uid'");
 		if(empty($userrow['account']) || empty($userrow['username'])){
 			$result=array("code"=>0,"user_token"=>$token,"msg"=>"登录成功！正在跳转到收款账号设置","url"=>"./editinfo.php?start=1");
@@ -149,7 +149,7 @@ case 'wxalogin':
 		$session=\lib\PasswordHasher::sessionFingerprint($uid, $key, (string)$userrow['pwd'], $password_hash);
 		$expiretime=time()+2592000;
 		$token=authcode("{$uid}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
-		setcookie("user_token", $token, time() + 2592000);
+		secure_setcookie('user_token', $token, time() + 2592000, '/user');
 		$DB->exec("update `pre_user` set `lasttime`=NOW() where `uid`='$uid'");
 		$result=array("code"=>0,"user_token"=>$token,"msg"=>"登录成功！");
 		exit(json_encode($result));
@@ -261,7 +261,7 @@ case 'reg':
 	if($conf['verifytype']==1 && empty($phone) || $conf['verifytype']==0 && empty($email) || empty($code) || empty($pwd)){
 		exit('{"code":-1,"msg":"请确保各项不能为空"}');
 	}
-	if(!$_POST['csrf_token'] || $_POST['csrf_token']!=$_SESSION['csrf_token'])exit('{"code":-1,"msg":"CSRF TOKEN ERROR"}');
+	csrf_require();
 	if($enc_type == '1'){
 		$plain = '';
 		$private_key = base64ToPem($conf['private_key'], 'PRIVATE KEY');
@@ -406,7 +406,7 @@ case 'findpwd':
 	if(empty($account) || empty($code) || empty($pwd)){
 		exit('{"code":-1,"msg":"请确保各项不能为空"}');
 	}
-	if(!$_POST['csrf_token'] || $_POST['csrf_token']!=$_SESSION['csrf_token'])exit('{"code":-1,"msg":"CSRF TOKEN ERROR"}');
+	csrf_require();
 	if($enc_type == '1'){
 		$plain = '';
 		$private_key = base64ToPem($conf['private_key'], 'PRIVATE KEY');

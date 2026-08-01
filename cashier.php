@@ -4,6 +4,7 @@ $nosession = true;
 require './includes/common.php';
 
 @header('Content-Type: text/html; charset=UTF-8');
+@header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data:; font-src 'self' data: https:; connect-src 'self'; form-action 'self'");
 
 $other=isset($_GET['other'])?true:false;
 $trade_no=trim((string)($_GET['trade_no'] ?? ''));
@@ -28,7 +29,7 @@ if(checkwechat()){
 <!DOCTYPE html>
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=0" name="viewport">
-<title>收银台 | <?php echo $sitename?$sitename:$conf['sitename']?> </title>
+<title>收银台 | <?php echo html_escape($sitename ?: $conf['sitename'])?> </title>
 <link href="/assets/css/reset.css" rel="stylesheet" type="text/css">
 <link href="/assets/css/main12.css?v=2" rel="stylesheet" type="text/css">
 </head>
@@ -45,7 +46,7 @@ if(checkwechat()){
 
     </div>
 </div>
-<input type="hidden" name="trade_no" value="<?php echo $trade_no?>"/>
+<input type="hidden" name="trade_no" value="<?php echo html_escape($trade_no)?>"/>
 <!--订单金额-->
 <?php if($other){?>
 <div class="w1080 order-amount12" style="height: auto;">
@@ -61,20 +62,20 @@ if(checkwechat()){
     <ul class="order-amount12-left">
         <li>
             <span>商品名称：</span>
-            <span><?php echo $row['name']?></span>
+            <span><?php echo html_escape($row['name'])?></span>
         </li>
         <li>
             <span>订单号：</span>
-            <span><?php echo $trade_no?></span>
+            <span><?php echo html_escape($trade_no)?></span>
         </li>
 		<li>
             <span>创建时间：</span>
-            <span><?php echo $row['addtime']?></span>
+            <span><?php echo html_escape($row['addtime'])?></span>
         </li>
     </ul>
     <div class="order-amount12-right">
         <span>订单金额：</span>
-        <strong><?php echo $row['money']?></strong>
+        <strong><?php echo html_escape($row['money'])?></strong>
         <span>元</span>
     </div>  
 </div>
@@ -85,9 +86,9 @@ if(checkwechat()){
         <h2>支付方式</h2>
         <ul class="types">
 		<?php foreach($paytype as $rows){?>
-          <li class="pay_li" value="<?php echo $rows['id']?>">
-             <img src="/assets/icon/<?php echo $rows['name']?>.ico">
-                    <span><?php echo $rows['showname']?></span>
+          <li class="pay_li" value="<?php echo (int)$rows['id']?>">
+             <img src="/assets/icon/<?php echo html_escape(preg_replace('/[^A-Za-z0-9_-]/', '', (string)$rows['name']))?>.ico" alt="">
+                    <span><?php echo html_escape($rows['showname'])?></span>
           </li>
 		<?php }?>
         </ul>
@@ -96,7 +97,7 @@ if(checkwechat()){
 <!--立即支付-->
 <div class="w1080 immediate-pay12">
   <div class="immediate-pay12-right">
-      <span>需支付：<strong><?php echo $row['realmoney']?$row['realmoney']:$row['money']?></strong>元<?php if($row['realmoney'] && $row['realmoney']!=$row['money'])echo '（包含'.($row['realmoney']-$row['money']).'元手续费）';?></span>
+      <span>需支付：<strong><?php echo html_escape($row['realmoney'] ?: $row['money'])?></strong>元<?php if($row['realmoney'] && $row['realmoney']!=$row['money'])echo '（包含'.html_escape($row['realmoney']-$row['money']).'元手续费）';?></span>
         <a class="immediate_pay">立即支付</a>
     </div>
 </div>
@@ -109,10 +110,10 @@ if(checkwechat()){
 </div>
 <!--底部-->
 <div class="w1080 footer12">
-    <p> <?php echo $sitename?$sitename:$conf['sitename']?></p>
+    <p> <?php echo html_escape($sitename ?: $conf['sitename'])?></p>
 </div>
 
-<script src="<?php echo $cdnpublic?>jquery/1.12.4/jquery.min.js"></script>
+<script src="<?php echo html_escape($cdnpublic)?>jquery/1.12.4/jquery.min.js"></script>
 <script type="text/javascript">
 $(document).ready(function(){
 	$(".types li").click(function(){

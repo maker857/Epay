@@ -1,4 +1,40 @@
 <?php
+function html_escape($value){
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+function csrf_token(){
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token']) || !preg_match('/^[a-f0-9]{64}$/', $_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+function csrf_verify($token){
+    return is_string($token) && $token !== '' && isset($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+function csrf_require(){
+    $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!csrf_verify($token)) {
+        http_response_code(403);
+        exit(json_encode(['code' => -1, 'msg' => 'CSRF TOKEN ERROR'], JSON_UNESCAPED_UNICODE));
+    }
+    return true;
+}
+function secure_setcookie($name, $value, $expires = 0, $path = '/'){
+    setcookie($name, $value, [
+        'expires' => (int)$expires,
+        'path' => $path,
+        'secure' => function_exists('is_https') ? is_https() : (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off'),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+function safe_color($value){
+    $value = trim((string)$value);
+    return preg_match('/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/', $value) ? $value : '';
+}
 function curl_get($url)
 {
 	global $conf;

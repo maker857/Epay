@@ -3,6 +3,7 @@ include("../includes/common.php");
 
 if(isset($_POST['action'])){
 	if(!$islogin) exit(json_encode(['code'=>-1, 'msg'=>'未登录']));
+	csrf_require();
 	if($_POST['action'] == 'generate'){
 		try {
 			$totp = \lib\TOTP::create();
@@ -41,6 +42,7 @@ if(isset($_POST['action'])){
 }
 
 $title='TOTP二次验证配置';
+$csrf_token = csrf_token();
 include './head.php';
 if($islogin==1){}else exit("<script language='javascript'>window.location.href='./login.php';</script>");
 
@@ -111,11 +113,12 @@ foreach($account_list as $row){
 <script src="<?php echo $cdnpublic?>jquery.qrcode/1.0/jquery.qrcode.min.js"></script>
 <script src="<?php echo $cdnpublic?>clipboard.js/1.7.1/clipboard.min.js"></script>
 <script>
+var csrf_token = <?php echo json_encode($csrf_token, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)?>;
 var commonData = {secret:null,qrcode:null};
 function open_totp(){
 	if(!commonData.qrcode || !commonData.secret){
 		var ii = layer.load(2, {shade:[0.1,'#fff']});
-		$.post('?', {action:'generate'}, function(res){
+		$.post('?', {action:'generate', csrf_token:csrf_token}, function(res){
 			layer.close(ii);
 			if(res.code == 0){
 				commonData.secret = res.data.secret;
@@ -147,7 +150,7 @@ function bind_totp(){
 		return false;
 	}
 	var ii = layer.load(2, {shade:[0.1,'#fff']});
-	$.post('?', {action:'bind', secret:commonData.secret, code:code}, function(res){
+	$.post('?', {action:'bind', secret:commonData.secret, code:code, csrf_token:csrf_token}, function(res){
 		layer.close(ii);
 		if(res.code == 0){
 			layer.alert('TOTP绑定成功', {icon: 1}, function(){
@@ -164,7 +167,7 @@ function close_totp(){
 		btn: ['确定','取消']
 	}, function(){
 		var ii = layer.load(2, {shade:[0.1,'#fff']});
-		$.post('?', {action: 'close'}, function(res){
+		$.post('?', {action: 'close', csrf_token:csrf_token}, function(res){
 			layer.close(ii);
 			if(res.code == 0){
 				layer.alert('TOTP已关闭', {icon: 1}, function(){

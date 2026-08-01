@@ -1,5 +1,6 @@
 <?php
 @header('Content-Type: text/html; charset=UTF-8');
+@header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data:; font-src 'self' data: https:; connect-src 'self'; form-action 'self'");
 
 $admin_cdnpublic = 0;
 if($admin_cdnpublic==1){
@@ -18,17 +19,17 @@ if($admin_cdnpublic==1){
   <meta charset="utf-8"/>
   <meta name="renderer" content="webkit">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title><?php echo $title ?></title>
-  <link href="<?php echo $cdnpublic?>twitter-bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet"/>
+  <title><?php echo html_escape($title) ?></title>
+  <link href="<?php echo html_escape($cdnpublic)?>twitter-bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="../assets/css/bootstrap.min.css" rel="stylesheet"/>
   <link href="../assets/css/bootstrap-table.css?v=1" rel="stylesheet"/>
-  <link href="<?php echo $cdnpublic?>font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet"/>
-  <script src="<?php echo $cdnpublic?>modernizr/2.8.3/modernizr.min.js"></script>
-  <script src="<?php echo $cdnpublic?>jquery/3.4.1/jquery.min.js"></script>
-  <script src="<?php echo $cdnpublic?>twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <link href="<?php echo html_escape($cdnpublic)?>font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet"/>
+  <script src="<?php echo html_escape($cdnpublic)?>modernizr/2.8.3/modernizr.min.js"></script>
+  <script src="<?php echo html_escape($cdnpublic)?>jquery/3.4.1/jquery.min.js"></script>
+  <script src="<?php echo html_escape($cdnpublic)?>twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
   <!--[if lt IE 9]>
-    <script src="<?php echo $cdnpublic?>html5shiv/3.7.3/html5shiv.min.js"></script>
-    <script src="<?php echo $cdnpublic?>respond.js/1.4.2/respond.min.js"></script>
+    <script src="<?php echo html_escape($cdnpublic)?>html5shiv/3.7.3/html5shiv.min.js"></script>
+    <script src="<?php echo html_escape($cdnpublic)?>respond.js/1.4.2/respond.min.js"></script>
   <![endif]-->
 </head>
 <body>

@@ -11,6 +11,7 @@ include("../includes/common.php");
 
 if(isset($_GET['act']) && $_GET['act']=='login'){
   if(!checkRefererHost())exit('{"code":403}');
+  csrf_require();
   $username = trim($_POST['username']);
   $password = trim($_POST['password']);
   $code = trim($_POST['code']);
@@ -53,7 +54,7 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
 		$session=hash('sha256', $username."\0".$conf['admin_pwd']."\0".$password_hash);
 		$expiretime=time() + 2592000;
 		$token=authcode("{$username}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
-		setcookie("admin_token", $token, $expiretime, null, null, null, true);
+		secure_setcookie('admin_token', $token, $expiretime, '/');
     unset($_SESSION['vc_code']);
     exit(json_encode(['code'=>0]));
   }else{
@@ -71,6 +72,7 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
   }
 }elseif(isset($_GET['act']) && $_GET['act']=='totp'){
   if(!checkRefererHost())exit('{"code":403}');
+  csrf_require();
   $code = trim((string)($_POST['code'] ?? ''));
   if (!preg_match('/^\d{6}$/', $code)) exit(json_encode(['code'=>-1,'msg'=>'动态口令格式错误']));
   if ($conf['totp_open'] != 1 || empty($conf['totp_secret'])) {
@@ -103,16 +105,17 @@ if(isset($_GET['act']) && $_GET['act']=='login'){
   $session=hash('sha256', $conf['admin_user']."\0".$conf['admin_pwd']."\0".$password_hash);
   $expiretime=time() + 2592000;
   $token=authcode("{$conf['admin_user']}\t{$session}\t{$expiretime}", 'ENCODE', SYS_KEY);
-  setcookie("admin_token", $token, $expiretime, null, null, null, true);
+  secure_setcookie('admin_token', $token, $expiretime, '/');
   exit(json_encode(['code'=>0]));
 }elseif(isset($_GET['logout'])){
 	if(!checkRefererHost())exit();
-	setcookie("admin_token", "", time() - 2592000);
+	secure_setcookie('admin_token', '', time() - 2592000, '/');
 	exit("<script language='javascript'>window.location.href='./login.php';</script>");
 }elseif($islogin==1){
 	exit("<script language='javascript'>alert('您已登录！');window.location.href='./';</script>");
 }
 $title='用户登录';
+$csrf_token = csrf_token();
 include './head.php';
 ?>
   <nav class="navbar navbar-fixed-top navbar-default">
@@ -218,7 +221,7 @@ function submitlogin(){
   $.ajax({
     type : 'POST',
     url : '?act=login',
-    data: {username:user, password:pass, code:code, enc:enc_type},
+    data: {username:user, password:pass, code:code, enc:enc_type, csrf_token:csrf_token},
     dataType : 'json',
     success : function(data) {
       layer.close(ii);
@@ -251,7 +254,7 @@ function doTotp(){
 		return false;
 	}
 	var ii = layer.load(2, {shade:[0.1,'#fff']});
-	$.post('?act=totp', {code:code}, function(res){
+	$.post('?act=totp', {code:code, csrf_token:csrf_token}, function(res){
 		layer.close(ii);
 		if(res.code == 0){
 			layer.msg('登录成功，正在跳转', {icon: 1,shade: 0.01,time: 15000});

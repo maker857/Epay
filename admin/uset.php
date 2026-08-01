@@ -14,7 +14,7 @@ $select = '';
 $rs = $DB->getAll("SELECT * FROM pre_group");
 foreach($rs as $row){
 	$usergroup[$row['gid']] = $row['name'];
-	$select.='<option value="'.$row['gid'].'">'.$row['name'].'</option>';
+	$select.='<option value="'.(int)$row['gid'].'">'.html_escape($row['name']).'</option>';
 }
 unset($rs);
 $settle_select = '';
@@ -104,122 +104,122 @@ $group=\lib\Channel::getGroup($row['gid']);
 ?>
 <div class="col-md-12 col-lg-10 center-block" style="float: none;">
 <div class="panel panel-primary">
-<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo $uid?></h3></div>
+<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo (int)$uid?></h3></div>
 <div class="panel-body">
 <ul class="nav nav-tabs">
 <li align="center" class="active"><a href="#">基本信息</a></li>
-<li align="center"><a href="./uset.php?my=api&uid=<?php echo $uid?>">密钥信息</a></li>
-<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo $uid?>">自定义接口信息</a></li><?php }?>
-<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo $uid?>">自定义子通道</a></li><?php }?>
+<li align="center"><a href="./uset.php?my=api&uid=<?php echo (int)$uid?>">密钥信息</a></li>
+<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo (int)$uid?>">自定义接口信息</a></li><?php }?>
+<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo (int)$uid?>">自定义子通道</a></li><?php }?>
 </ul>
-<form onsubmit="return editUser(this, <?php echo $uid?>)" method="POST">
+<form onsubmit="return editUser(this, <?php echo (int)$uid?>)" method="POST">
 <div class="row">
 <div class="col-sm-12 col-md-6">
 <h4><font color="blue">基本信息</font></h4>
 <div class="form-group">
 <label>手机号(登录账号):</label><br>
-<input type="text" class="form-control" name="phone" value="<?php echo $row['phone']?>" placeholder="和邮箱不能同时为空">
+<input type="text" class="form-control" name="phone" value="<?php echo html_escape($row['phone'])?>" placeholder="和邮箱不能同时为空">
 </div>
 <div class="form-group">
 <label>邮箱(登录账号):</label><br>
-<input type="text" class="form-control" name="email" value="<?php echo $row['email']?>" placeholder="和手机号不能同时为空">
+<input type="text" class="form-control" name="email" value="<?php echo html_escape($row['email'])?>" placeholder="和手机号不能同时为空">
 </div>
 <div class="form-group">
 <label>商户余额:</label><br>
-<input type="text" class="form-control" name="money" value="<?php echo $row['money']?>" required>
+<input type="text" class="form-control" name="money" value="<?php echo html_escape($row['money'])?>" required>
 </div>
 <div class="form-group">
 <label>用户组:</label><br>
-<select class="form-control" name="gid" default="<?php echo $row['gid']?>"><?php echo $select?></select>
+<select class="form-control" name="gid" default="<?php echo (int)$row['gid']?>"><?php echo $select?></select>
 </div>
 <div class="form-group">
 <label>ＱＱ:</label><br>
-<input type="text" class="form-control" name="qq" value="<?php echo $row['qq']?>" placeholder="可留空">
+<input type="text" class="form-control" name="qq" value="<?php echo html_escape($row['qq'])?>" placeholder="可留空">
 </div>
 <div class="form-group">
 <label>网站域名:</label><br>
-<input type="text" class="form-control" name="url" value="<?php echo $row['url']?>" placeholder="可留空">
+<input type="text" class="form-control" name="url" value="<?php echo html_escape($row['url'])?>" placeholder="可留空">
 </div>
 <div class="form-group">
 <label>商品名称自定义:</label><br>
-<input type="text" class="form-control" name="ordername" value="<?php echo $row['ordername']?>" placeholder="默认以系统设置里面的为准">
+<input type="text" class="form-control" name="ordername" value="<?php echo html_escape($row['ordername'])?>" placeholder="默认以系统设置里面的为准">
 <font color="green">支持变量值：[name]原商品名称，[order]支付订单号，[outorder]商户订单号，[time]时间戳，[qq]当前商户的联系QQ</font>
 </div>
 <div class="form-group">
 <label>商户保证金余额:</label><br>
-<input type="text" class="form-control" name="deposit" value="<?php echo $row['deposit']?>" placeholder="开启商户保证金功能后使用">
+<input type="text" class="form-control" name="deposit" value="<?php echo html_escape($row['deposit'])?>" placeholder="开启商户保证金功能后使用">
 </div>
 <div class="form-group">
 <label>预留余额:</label><br>
-<input type="text" class="form-control" name="remain_money" value="<?php echo $row['remain_money']?>" placeholder="可设置预留部分商户余额不参与每日自动结算，数字后加%即为百分比">
+<input type="text" class="form-control" name="remain_money" value="<?php echo html_escape($row['remain_money'])?>" placeholder="可设置预留部分商户余额不参与每日自动结算，数字后加%即为百分比">
 </div>
 <h4><font color="blue">结算信息</font></h4>
 <div class="form-group">
-<label>结算方式:</label><br><select class="form-control" name="settle_id" default="<?php echo $row['settle_id']?>"><?php echo $settle_select?></select>
+<label>结算方式:</label><br><select class="form-control" name="settle_id" default="<?php echo (int)$row['settle_id']?>"><?php echo $settle_select?></select>
 </div>
 <div class="form-group">
 <label>结算账号:</label><br>
-<input type="text" class="form-control" name="account" value="<?php echo $row['account']?>" placeholder="不使用平台代收可留空">
+<input type="text" class="form-control" name="account" value="<?php echo html_escape($row['account'])?>" placeholder="不使用平台代收可留空">
 </div>
 <div class="form-group">
 <label>结算账号姓名:</label><br>
-<input type="text" class="form-control" name="username" value="<?php echo $row['username']?>" placeholder="不使用平台代收可留空">
+<input type="text" class="form-control" name="username" value="<?php echo html_escape($row['username'])?>" placeholder="不使用平台代收可留空">
 </div>
 </div>
 <div class="col-sm-12 col-md-6">
 <h4><font color="blue">实名信息</font></h4>
 <div class="form-group">
-<label>是否实名认证:</label><br><select class="form-control" name="cert" default="<?php echo $row['cert']?>"><option value="0">0_未实名</option><option value="1">1_已实名</option></select>
+<label>是否实名认证:</label><br><select class="form-control" name="cert" default="<?php echo (int)$row['cert']?>"><option value="0">0_未实名</option><option value="1">1_已实名</option></select>
 </div>
 <div class="form-group">
-<label>认证类型:</label><br><select class="form-control" name="certtype" default="<?php echo $row['certtype']?>"><option value="0">个人实名认证</option><option value="1">企业实名认证</option></select>
+<label>认证类型:</label><br><select class="form-control" name="certtype" default="<?php echo (int)$row['certtype']?>"><option value="0">个人实名认证</option><option value="1">企业实名认证</option></select>
 </div>
 <div class="form-group">
-<label>认证方式:</label><br><select class="form-control" name="certmethod" default="<?php echo $row['certmethod']?>"><option value="0">支付宝快捷认证</option><option value="1">微信快捷认证</option><option value="2">手机号三要素认证</option><option value="3">人工审核认证</option></select>
+<label>认证方式:</label><br><select class="form-control" name="certmethod" default="<?php echo (int)$row['certmethod']?>"><option value="0">支付宝快捷认证</option><option value="1">微信快捷认证</option><option value="2">手机号三要素认证</option><option value="3">人工审核认证</option></select>
 </div>
 <div class="form-group">
 <label>真实姓名:</label><br>
-<input type="text" class="form-control" name="certname" value="<?php echo $row['certname']?>">
+<input type="text" class="form-control" name="certname" value="<?php echo html_escape($row['certname'])?>">
 </div>
 <div class="form-group">
 <label>身份证号:</label><br>
-<input type="text" class="form-control" name="certno" value="<?php echo $row['certno']?>" maxlength="18">
+<input type="text" class="form-control" name="certno" value="<?php echo html_escape($row['certno'])?>" maxlength="18">
 </div>
 <div class="form-group">
 <label>公司名称:</label><br>
-<input type="text" class="form-control" name="certcorpname" value="<?php echo $row['certcorpname']?>">
+<input type="text" class="form-control" name="certcorpname" value="<?php echo html_escape($row['certcorpname'])?>">
 </div>
 <div class="form-group">
 <label>营业执照号码:</label><br>
-<input type="text" class="form-control" name="certcorpno" value="<?php echo $row['certcorpno']?>" maxlength="30">
+<input type="text" class="form-control" name="certcorpno" value="<?php echo html_escape($row['certcorpno'])?>" maxlength="30">
 </div>
 <h4><font color="blue">功能开关</font></h4>
 <div class="form-group">
-<label>手续费扣除模式:</label><br><select class="form-control" name="mode" default="<?php echo $row['mode']?>"><option value="0">余额扣费</option><option value="1">订单加费</option></select>
+<label>手续费扣除模式:</label><br><select class="form-control" name="mode" default="<?php echo (int)$row['mode']?>"><option value="0">余额扣费</option><option value="1">订单加费</option></select>
 </div>
 <div class="form-group">
-<label>聚合收款码:</label><br><select class="form-control" name="open_code" default="<?php echo $row['open_code']?>"><option value="0">缺省（与系统设置一致）</option><option value="1">开启</option><option value="2">关闭</option></select>
+<label>聚合收款码:</label><br><select class="form-control" name="open_code" default="<?php echo (int)$row['open_code']?>"><option value="0">缺省（与系统设置一致）</option><option value="1">开启</option><option value="2">关闭</option></select>
 </div>
 <div class="row">
 	<div class="col-md-4 col-sm-12">
 		<div class="form-group">
-		<label>商户状态:</label><br><select class="form-control" name="status" default="<?php echo $row['status']?>"><option value="1">1_正常</option><option value="0">0_封禁</option><option value="2">2_未审核</option></select>
+		<label>商户状态:</label><br><select class="form-control" name="status" default="<?php echo (int)$row['status']?>"><option value="1">1_正常</option><option value="0">0_封禁</option><option value="2">2_未审核</option></select>
 		</div>
 	</div>
 	<div class="col-md-4 col-sm-12">
 		<div class="form-group">
-		<label>支付权限:</label><br><select class="form-control" name="pay" default="<?php echo $row['pay']?>"><option value="1">1_开启</option><option value="0">0_关闭</option></select>
+		<label>支付权限:</label><br><select class="form-control" name="pay" default="<?php echo (int)$row['pay']?>"><option value="1">1_开启</option><option value="0">0_关闭</option></select>
 		</div>
 	</div>
 	<div class="col-md-4 col-sm-12">
 		<div class="form-group">
-		<label>结算权限:</label><br><select class="form-control" name="settle" default="<?php echo $row['settle']?>"><option value="1">1_开启</option><option value="0">0_关闭</option></select>
+		<label>结算权限:</label><br><select class="form-control" name="settle" default="<?php echo (int)$row['settle']?>"><option value="1">1_开启</option><option value="0">0_关闭</option></select>
 		</div>
 	</div>
 </div>
 <div class="form-group">
 <label>邀请方商户ID:</label><br>
-<input type="text" class="form-control" name="upid" value="<?php echo $row['upid'] == 0 ? '' : $row['upid']?>" placeholder="用于邀请返现">
+<input type="text" class="form-control" name="upid" value="<?php echo (int)$row['upid'] === 0 ? '' : (int)$row['upid']?>" placeholder="用于邀请返现">
 </div>
 <h4><font color="blue">密码修改</font></h4>
 <div class="form-group">
@@ -271,33 +271,33 @@ if(!$conf['apiurl'])$conf['apiurl'] = $siteurl;
 		</div>
 <div class="col-md-12 col-lg-10 center-block" style="float: none;">
 <div class="panel panel-primary">
-<div class="panel-heading"><h3 class="panel-title">商户密钥信息 UID:<?php echo $uid?></h3></div>
+<div class="panel-heading"><h3 class="panel-title">商户密钥信息 UID:<?php echo (int)$uid?></h3></div>
 <div class="panel-body">
 <ul class="nav nav-tabs">
-<li align="center"><a href="./uset.php?my=edit&uid=<?php echo $uid?>">基本信息</a></li>
+<li align="center"><a href="./uset.php?my=edit&uid=<?php echo (int)$uid?>">基本信息</a></li>
 <li align="center" class="active"><a href="#">密钥信息</a></li>
-<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo $uid?>">自定义接口信息</a></li><?php }?>
-<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo $uid?>">自定义子通道</a></li><?php }?>
+<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo (int)$uid?>">自定义接口信息</a></li><?php }?>
+<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo (int)$uid?>">自定义子通道</a></li><?php }?>
 </ul>
 <form class="form-horizontal">
-	<input type="hidden" name="uid" value="<?php echo $uid?>"/>
+	<input type="hidden" name="uid" value="<?php echo (int)$uid?>"/>
 	<div class="form-group">
 		<label class="col-sm-2 control-label">接口地址</label>
 		<div class="col-sm-9">
-			<div class="input-group"><input class="form-control" type="text" value="<?php echo $conf['apiurl']?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo $conf['apiurl']?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
+			<div class="input-group"><input class="form-control" type="text" value="<?php echo html_escape($conf['apiurl'])?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo html_escape($conf['apiurl'])?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
 		</div>
 	</div>
 	<div class="form-group">
 		<label class="col-sm-2 control-label">商户ID</label>
 		<div class="col-sm-9">
-			<div class="input-group"><input class="form-control" type="text" value="<?php echo $uid?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo $uid?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
+			<div class="input-group"><input class="form-control" type="text" value="<?php echo (int)$uid?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo (int)$uid?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
 		</div>
 	</div>
 	<div class="form-group"><div class="col-sm-offset-2 col-sm-4"><h4>V1接口（MD5签名方式）：</h4></div></div>
 	<div class="form-group">
 		<label class="col-sm-2 control-label">商户MD5密钥</label>
 		<div class="col-sm-9">
-			<div class="input-group"><input class="form-control" type="text" value="<?php echo $row['key']?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo $row['key']?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
+			<div class="input-group"><input class="form-control" type="text" value="<?php echo html_escape($row['key'])?>" readonly><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo html_escape($row['key'])?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
 		</div>
 	</div>
 	<div class="form-group">
@@ -308,13 +308,13 @@ if(!$conf['apiurl'])$conf['apiurl'] = $siteurl;
 	<div class="form-group">
 		<label class="col-sm-2 control-label">平台公钥</label>
 		<div class="col-sm-9">
-			<div class="input-group"><textarea class="form-control" name="platform_public_key" rows="3" readonly><?php echo $conf['public_key']?></textarea><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo $conf['public_key']?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
+			<div class="input-group"><textarea class="form-control" name="platform_public_key" rows="3" readonly><?php echo html_escape($conf['public_key'])?></textarea><div class="input-group-addon"><a href="javascript:;" class="copy-btn" data-clipboard-text="<?php echo html_escape($conf['public_key'])?>" title="点击复制"><i class="fa fa-copy"></i></a></div></div>
 		</div>
 	</div>
 	<div class="form-group">
 		<label class="col-sm-2 control-label">商户公钥</label>
 		<div class="col-sm-9">
-			<div class="input-group"><textarea class="form-control" name="merchant_public_key" rows="3" readonly><?php echo $row['publickey']?></textarea><div class="input-group-addon"><a href="javascript:;" class="copy-btn" title="点击复制" onclick="alert('请仔细分清各种密钥区别，只需要复制平台公钥和商户私钥即可！如商户私钥遗失请重新生成。')"><i class="fa fa-copy"></i></a></div></div>
+			<div class="input-group"><textarea class="form-control" name="merchant_public_key" rows="3" readonly><?php echo html_escape($row['publickey'])?></textarea><div class="input-group-addon"><a href="javascript:;" class="copy-btn" title="点击复制" onclick="alert('请仔细分清各种密钥区别，只需要复制平台公钥和商户私钥即可！如商户私钥遗失请重新生成。')"><i class="fa fa-copy"></i></a></div></div>
 		</div>
 	</div>
 	<div class="form-group">
@@ -326,7 +326,7 @@ if(!$conf['apiurl'])$conf['apiurl'] = $siteurl;
 	<div class="form-group">
 		<label class="col-sm-2 control-label">签名方式开关</label>
 		<div class="col-sm-9">
-			<select class="form-control" name="keytype" default="<?php echo $row['keytype']?>"><option value="0">开启MD5+RSA签名（兼容模式）</option><option value="1">仅开启RSA签名（安全模式）</option></select>
+			<select class="form-control" name="keytype" default="<?php echo (int)$row['keytype']?>"><option value="0">开启MD5+RSA签名（兼容模式）</option><option value="1">仅开启RSA签名（安全模式）</option></select>
 		</div>
 	</div>
 	<div class="form-group">
@@ -354,21 +354,21 @@ $channelinfo = json_decode($row['channelinfo'], true);
 ?>
 <div class="col-md-12 col-lg-10 center-block" style="float: none;">
 <div class="panel panel-primary">
-<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo $uid?></h3></div>
+<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo (int)$uid?></h3></div>
 <div class="panel-body">
 <ul class="nav nav-tabs">
-<li align="center"><a href="./uset.php?my=edit&uid=<?php echo $uid?>">基本信息</a></li>
-<li align="center"><a href="./uset.php?my=api&uid=<?php echo $uid?>">密钥信息</a></li>
+<li align="center"><a href="./uset.php?my=edit&uid=<?php echo (int)$uid?>">基本信息</a></li>
+<li align="center"><a href="./uset.php?my=api&uid=<?php echo (int)$uid?>">密钥信息</a></li>
 <li align="center" class="active"><a href="#">自定义接口信息</a></li>
-<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo $uid?>">自定义子通道</a></li><?php }?>
+<?php if($group['subchannel_type']){?><li align="center"><a href="./uset.php?my=subchannel&uid=<?php echo (int)$uid?>">自定义子通道</a></li><?php }?>
 </ul>
-<form onsubmit="return editUserChannelInfo(this, <?php echo $uid?>)" method="POST">
+<form onsubmit="return editUserChannelInfo(this, <?php echo (int)$uid?>)" method="POST">
 <?php
 foreach(explode(',',$group['settings']) as $row){
 	$arr = explode(':', $row);
 	echo '<div class="form-group">
-<label>'.$arr[1].':</label><br>
-<input type="text" class="form-control" name="setting['.$arr[0].']" value="'.$channelinfo[$arr[0]].'" required>
+<label>'.html_escape($arr[1] ?? '').':</label><br>
+<input type="text" class="form-control" name="setting['.html_escape($arr[0] ?? '').']" value="'.html_escape($channelinfo[$arr[0]] ?? '').'" required>
 </div>';
 }
 ?>
@@ -392,7 +392,7 @@ foreach($rs as $row){
 	$paytype[$row['id']] = $row['showname'];
 	$paytypes[$row['id']] = $row['name'];
 	if(in_array($row['name'], $group['subchannel_type'])){
-		$type_select .= '<option value="'.$row['id'].'">'.$row['showname'].'</option>';
+		$type_select .= '<option value="'.(int)$row['id'].'">'.html_escape($row['showname']).'</option>';
 	}
 }
 unset($rs);
@@ -412,7 +412,7 @@ $list = $DB->getAll("SELECT A.*,B.type,B.name channelname FROM pre_subchannel A 
 				<form class="form-horizontal" id="form-store">
 					<input type="hidden" name="action" id="action"/>
 					<input type="hidden" name="id" id="id"/>
-					<input type="hidden" name="uid" value="<?php echo $uid?>"/>
+					<input type="hidden" name="uid" value="<?php echo (int)$uid?>"/>
 					<div class="form-group">
 						<label class="col-sm-2 control-label">支付方式</label>
 						<div class="col-sm-10">
@@ -445,12 +445,12 @@ $list = $DB->getAll("SELECT A.*,B.type,B.name channelname FROM pre_subchannel A 
 </div>
 <div class="col-md-12 col-lg-10 center-block" style="float: none;">
 <div class="panel panel-primary">
-<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo $uid?></h3></div>
+<div class="panel-heading"><h3 class="panel-title">修改商户信息 UID:<?php echo (int)$uid?></h3></div>
 <div class="panel-body">
 <ul class="nav nav-tabs">
-<li align="center"><a href="./uset.php?my=edit&uid=<?php echo $uid?>">基本信息</a></li>
-<li align="center"><a href="./uset.php?my=api&uid=<?php echo $uid?>">密钥信息</a></li>
-<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo $uid?>">自定义接口信息</a></li><?php }?>
+<li align="center"><a href="./uset.php?my=edit&uid=<?php echo (int)$uid?>">基本信息</a></li>
+<li align="center"><a href="./uset.php?my=api&uid=<?php echo (int)$uid?>">密钥信息</a></li>
+<?php if($group['settings']){?><li align="center"><a href="./uset.php?my=edit2&uid=<?php echo (int)$uid?>">自定义接口信息</a></li><?php }?>
 <li align="center" class="active"><a href="#">自定义子通道</a></li>
 </ul>
 
@@ -468,7 +468,11 @@ $list = $DB->getAll("SELECT A.*,B.type,B.name channelname FROM pre_subchannel A 
 foreach($list as $res)
 {
 	if(empty($res['info'])) $res['info'] = '点击设置';
-echo '<tr><td><b>'.$res['id'].'</b></td><td><img src="/assets/icon/'.$paytypes[$res['type']].'.ico" width="16" onerror="this.style.display=\'none\'"> '.$paytype[$res['type']].'</td><td>'.$res['channel'].'_'.$res['channelname'].'</td><td>'.$res['name'].'</td><td><a href="javascript:editInfo('.$res['id'].')">'.$res['info'].'</a></td><td>'.($res['status']==1?'<a class="btn btn-xs btn-success" onclick="setStatus('.$res['id'].',0)">已开启</a>':'<a class="btn btn-xs btn-warning" onclick="setStatus('.$res['id'].',1)">已关闭</a>').'</td><td><a class="btn btn-xs btn-info" onclick="editframe('.$res['id'].')">编辑</a>&nbsp;<a class="btn btn-xs btn-danger" onclick="delItem('.$res['id'].')">删除</a>&nbsp;<a href="./order.php?subchannel='.$res['id'].'" target="_blank" class="btn btn-xs btn-default">订单</a>&nbsp;<a onclick="testpay('.$res['id'].','.$res['channel'].')" class="btn btn-xs btn-default">测试</a></td></tr>';
+$id = (int)$res['id'];
+$channelId = (int)$res['channel'];
+$type = (int)$res['type'];
+$icon = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($paytypes[$type] ?? ''));
+echo '<tr><td><b>'.$id.'</b></td><td><img src="/assets/icon/'.html_escape($icon).'.ico" width="16" alt=""> '.html_escape($paytype[$type] ?? '').'</td><td>'.$channelId.'_'.html_escape($res['channelname']).'</td><td>'.html_escape($res['name']).'</td><td><a href="javascript:editInfo('.$id.')">'.html_escape($res['info']).'</a></td><td>'.($res['status']==1?'<a class="btn btn-xs btn-success" onclick="setStatus('.$id.',0)">已开启</a>':'<a class="btn btn-xs btn-warning" onclick="setStatus('.$id.',1)">已关闭</a>').'</td><td><a class="btn btn-xs btn-info" onclick="editframe('.$id.')">编辑</a>&nbsp;<a class="btn btn-xs btn-danger" onclick="delItem('.$id.')">删除</a>&nbsp;<a href="./order.php?subchannel='.$id.'" target="_blank" class="btn btn-xs btn-default">订单</a>&nbsp;<a onclick="testpay('.$id.','.$channelId.')" class="btn btn-xs btn-default">测试</a></td></tr>';
 }
 ?>
           </tbody>
@@ -481,8 +485,8 @@ echo '<tr><td><b>'.$res['id'].'</b></td><td><img src="/assets/icon/'.$paytypes[$
 <?php } ?>
     </div>
   </div>
-<script src="<?php echo $cdnpublic?>layer/3.1.1/layer.js"></script>
-<script src="<?php echo $cdnpublic?>clipboard.js/1.7.1/clipboard.min.js"></script>
+<script src="<?php echo html_escape($cdnpublic)?>layer/3.1.1/layer.js"></script>
+<script src="<?php echo html_escape($cdnpublic)?>clipboard.js/1.7.1/clipboard.min.js"></script>
 <script>
 $(document).ready(function(){
 var clipboard = new Clipboard('.copy-btn');
