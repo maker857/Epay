@@ -1,0 +1,8 @@
+services:
+  app:
+    # Mount the working tree so PHP changes are visible without rebuilding.
+    volumes:
+      - .:/var/www/html
+      - epay-uploads:/var/www/html/assets/uploads
+      - epay-plugin-logs:/var/www/html/plugins/sandpay/logs
+    read_only: false

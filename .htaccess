@@ -1,0 +1,24 @@
+RewriteEngine On
+
+# Keep real files and directories working normally.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9_-]+)\.html$ index.php?mod=$1 [L,QSA]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^pay/(.*)$ pay.php?s=$1 [L,QSA]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^api/(.*)$ api.php?s=$1 [L,QSA]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^doc/([a-zA-Z0-9_-]+)\.html$ index.php?doc=$1 [L,QSA]
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(?:env|log|sql|bak|ini)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
