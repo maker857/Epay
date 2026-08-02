@@ -1,3 +1,4 @@
 .env
 install/install.lock
 backups/
+.worktrees/
