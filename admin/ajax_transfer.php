@@ -107,36 +107,17 @@ case 'balance_query':
 break;
 case 'setTransferStatus':
 	$biz_no=$_POST['biz_no'];
-	$order = $DB->find('transfer', '*', ['biz_no' => $biz_no]);
-	if(!$order) exit('{"code":-1,"msg":"付款记录不存在！"}');
 	$status=intval($_POST['status']);
 	$reason = trim($_POST['reason']);
-	$data = ['status'=>$status];
-	if(!empty($reason)) $data['result'] = $reason;
-	if($status == 1 && empty($order['paytime'])) $data['paytime'] = date('Y-m-d H:i:s');
-	if($DB->update('transfer', $data, ['biz_no' => $biz_no])){
-		if($status == 2 && ($order['status'] == 3 || $order['status'] == 0) && $order['uid'] > 0){
-			changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-		}
-		exit('{"code":0,"msg":"succ"}');
-	}
-	else exit('{"code":-1,"msg":"修改失败['.$DB->error().']"}');
+	exit(json_encode(\lib\Transfer::adminSetStatus($biz_no, $status, $reason)));
 break;
 case 'delTransfer':
 	$biz_no=$_POST['biz_no'];
-	if($DB->delete('transfer', ['biz_no' => $biz_no])!==false)exit('{"code":0,"msg":"succ"}');
-	else exit('{"code":-1,"msg":"删除失败['.$DB->error().']"}');
+	exit(json_encode(\lib\Transfer::deleteFinalized($biz_no)));
 break;
 case 'refundTransfer':
 	$biz_no=$_POST['biz_no'];
-	$order = $DB->find('transfer', '*', ['biz_no' => $biz_no]);
-    if(!$order) exit('{"code":-1,"msg":"付款记录不存在！"}');
-	if($DB->exec("UPDATE pre_transfer SET status='2' WHERE biz_no='$biz_no'")){
-		if($order['uid'] > 0){
-			changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-		}
-	}
-	exit('{"code":0,"msg":"已成功将¥'.$order['costmoney'].'退给商户'.$order['uid'].'"}');
+	exit(json_encode(\lib\Transfer::adminSetStatus($biz_no, 2, '管理员手动退回')));
 break;
 case 'transfer_proof':
 	$biz_no=trim($_POST['biz_no']);
@@ -149,20 +130,12 @@ case 'operation': //批量操作订单
 	$i=0;
 	foreach($checkbox as $biz_no){
 		if($status==3){
-			$DB->delete('transfer', ['biz_no' => $biz_no]);
+			$result = \lib\Transfer::deleteFinalized($biz_no);
+			if($result['code'] === 0) $i++;
 			continue;
 		}
-		$order = $DB->find('transfer', '*', ['biz_no' => $biz_no]);
-		if($order){
-			$data = ['status'=>$status];
-			if($status == 1 && empty($order['paytime'])) $data['paytime'] = date('Y-m-d H:i:s');
-			if($DB->update('transfer', $data, ['biz_no' => $biz_no])){
-				if($status == 2 && ($order['status'] == 3 || $order['status'] == 0) && $order['uid'] > 0){
-					changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-				}
-				$i++;
-			}
-		}
+		$result = \lib\Transfer::adminSetStatus($biz_no, $status, '管理员批量确认失败');
+		if($result['code'] === 0) $i++;
 	}
 	exit('{"code":0,"msg":"成功改变'.$i.'条订单状态"}');
 break;

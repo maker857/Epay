@@ -101,6 +101,50 @@ class Transfer
         }
     }
 
+    private static function isExplicitProviderFailure($result){
+        return is_array($result) && isset($result['status']) && (int)$result['status'] === 2;
+    }
+
+    public static function adminSetStatus($biz_no, $status, $reason = ''){
+        try{
+            if((int)$status === 1){
+                self::completeReservedTransfer($biz_no, [
+                    'status'=>1,
+                    'paydate'=>'NOW()',
+                    'orderid'=>null,
+                ]);
+                return ['code'=>0, 'msg'=>'succ'];
+            }
+            if((int)$status === 2){
+                self::failReservedTransfer($biz_no, $reason ?: '管理员确认转账失败');
+                return ['code'=>0, 'msg'=>'succ'];
+            }
+            return ['code'=>-1, 'msg'=>'管理员只能确认转账成功或失败'];
+        }catch(\Throwable $e){
+            return ['code'=>-1, 'msg'=>$e->getMessage()];
+        }
+    }
+
+    public static function deleteFinalized($biz_no){
+        global $DB;
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) return ['code'=>-1, 'msg'=>'无法开始删除事务: '.$DB->error()];
+        try{
+            $order = $DB->getRow('SELECT status FROM pre_transfer WHERE biz_no=:biz_no FOR UPDATE', [':biz_no'=>$biz_no]);
+            if(!$order) throw new \RuntimeException('付款记录不存在');
+            if(!in_array((int)$order['status'], [1, 2], true)){
+                throw new \RuntimeException('待处理或已预留余额的转账不能删除');
+            }
+            $deleted = $DB->delete('transfer', ['biz_no'=>$biz_no]);
+            if($deleted !== 1) throw new \RuntimeException('删除转账失败: '.($DB->error() ?: 'unexpected affected row count'));
+            if(!$DB->commit()) throw new \RuntimeException('提交删除事务失败: '.$DB->error());
+            return ['code'=>0, 'msg'=>'succ'];
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            return ['code'=>-1, 'msg'=>$e->getMessage()];
+        }
+    }
+
     public static function add($uid, $type, $out_biz_no, $payee_account, $payee_real_name, $money, $title = null, $desc = null, $bookid = null, $channelid = null, $submitter = null){
         global $conf, $DB, $userrow, $siteurl;
         $biz_no = $out_biz_no;
@@ -237,6 +281,18 @@ class Transfer
                 $result['msg']='提交成功！转账处理中。';
             }
             return $result;
+        }
+
+        if(!self::isExplicitProviderFailure($result)){
+            self::notePendingTransfer($biz_no, '平台结果待查询: '.($result['msg'] ?? '未知响应'));
+            return [
+                'code'=>-1,
+                'status'=>0,
+                'biz_no'=>$biz_no,
+                'out_biz_no'=>$out_biz_no,
+                'cost_money'=>$need_money,
+                'msg'=>'转账结果暂不明确，请通过原交易号查询',
+            ];
         }
 
         $failureMessage = $result['errmsg'] ?? ($result['msg'] ?? '支付平台拒绝转账');
@@ -505,6 +561,11 @@ class Transfer
                 ];
             }
             return $result;
+        }
+
+        if(!self::isExplicitProviderFailure($result)){
+            self::notePendingTransfer($biz_no, '红包结果待查询: '.($result['msg'] ?? '未知响应'));
+            return ['code'=>-1, 'status'=>0, 'msg'=>'红包转账结果暂不明确，请稍后查询'];
         }
 
         $message = mb_substr((string)($result['msg'] ?? '支付平台拒绝红包转账'), 0, 80);

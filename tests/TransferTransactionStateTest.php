@@ -87,6 +87,8 @@ try {
 	assertTransferState((int)$failureOrder['status'] === 2, 'An explicit provider failure must mark the transfer failed.');
 	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '90.00', 'An explicit provider failure must refund the reserved balance.');
 	assertTransferState((int)$DB->count('record', ['uid'=>$uid, 'trade_no'=>$failureNo, 'type'=>'代付退回']) === 1, 'An explicit provider failure must write one refund record.');
+	$deleteFailure = Transfer::deleteFinalized($failureNo);
+	assertTransferState($deleteFailure['code'] === 0 && !$DB->find('transfer', '*', ['biz_no'=>$failureNo]), 'A finalized transfer may be deleted without changing balances.');
 
 	$unknownNo = transferTestNo($suffix + 2);
 	$bizNos[] = $unknownNo;
@@ -97,6 +99,22 @@ try {
 	$unknownOrder = $DB->find('transfer', '*', ['biz_no'=>$unknownNo]);
 	assertTransferState((int)$unknownOrder['status'] === 0, 'An uncertain provider result must keep the local transfer pending.');
 	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '80.00', 'An uncertain provider result must keep the balance reserved.');
+
+	$ambiguousNo = transferTestNo($suffix + 20);
+	$bizNos[] = $ambiguousNo;
+	$ambiguousResult = Transfer::add($uid, 'alipay', $ambiguousNo, 'ambiguous@example.com', 'Ambiguous', 10, null, 'ambiguous test', null, $channelId, function () {
+		return ['code'=>-1, 'msg'=>'provider response timeout'];
+	});
+	assertTransferState($ambiguousResult['code'] === -1 && (int)$ambiguousResult['status'] === 0, 'A nonzero provider code without explicit failed status must remain pending.');
+	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$ambiguousNo]) === 0, 'An ambiguous provider response must not mark the transfer failed.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '70.00', 'An ambiguous provider response must keep the balance reserved.');
+	assertTransferState((int)$DB->count('record', ['uid'=>$uid, 'trade_no'=>$ambiguousNo, 'type'=>'代付退回']) === 0, 'An ambiguous provider response must not refund the merchant.');
+	$deletePending = Transfer::deleteFinalized($ambiguousNo);
+	assertTransferState($deletePending['code'] === -1 && $DB->find('transfer', '*', ['biz_no'=>$ambiguousNo]), 'A pending reserved transfer must not be deleted by an administrator.');
+	$adminFailed = Transfer::adminSetStatus($ambiguousNo, 2, 'administrator confirmed failure');
+	assertTransferState($adminFailed['code'] === 0 && (int)$DB->findColumn('transfer', 'status', ['biz_no'=>$ambiguousNo]) === 2, 'An administrator-confirmed failure must use the atomic failure state transition.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '80.00', 'An administrator-confirmed failure must refund the reserved balance atomically.');
+	assertTransferState((int)$DB->count('record', ['uid'=>$uid, 'trade_no'=>$ambiguousNo, 'type'=>'代付退回']) === 1, 'An administrator-confirmed failure must refund exactly once.');
 
 	$localFailureNo = transferTestNo($suffix + 3);
 	$bizNos[] = $localFailureNo;
@@ -163,6 +181,21 @@ try {
 	assertTransferState($redUnknown['code'] === -1 && (int)$redUnknown['status'] === 0, 'An uncertain red packet result must remain pending reconciliation.');
 	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$redUnknownNo]) === 0, 'An uncertain red packet must remain processing.');
 	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '50.00', 'An uncertain red packet must keep its balance reserved.');
+
+	$redAmbiguousNo = transferTestNo($suffix + 21);
+	$bizNos[] = $redAmbiguousNo;
+	Transfer::red_add($uid, 'alipay', $redAmbiguousNo, 10, 'red ambiguous', $channelId);
+	$redAmbiguous = Transfer::red_receive($redAmbiguousNo, 'ambiguous-openid', function () {
+		return ['code'=>-1, 'msg'=>'provider response timeout'];
+	});
+	assertTransferState($redAmbiguous['code'] === -1 && (int)$redAmbiguous['status'] === 0, 'An ambiguous red packet response must remain pending reconciliation.');
+	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$redAmbiguousNo]) === 0, 'An ambiguous red packet response must not make the packet claimable again.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '40.00', 'An ambiguous red packet response must keep the reserved balance.');
+
+	$adminSource = file_get_contents(__DIR__.'/../admin/ajax_transfer.php');
+	assertTransferState(strpos($adminSource, 'Transfer::adminSetStatus') !== false, 'Administrator status changes must delegate to the transfer state machine.');
+	assertTransferState(strpos($adminSource, 'Transfer::deleteFinalized') !== false, 'Administrator deletion must delegate to the transfer state machine.');
+	assertTransferState(strpos($adminSource, "\$DB->delete('transfer'") === false, 'Administrator transfer actions must not directly delete transfer rows.');
 
 	echo "Transfer transaction state tests passed.\n";
 } finally {
