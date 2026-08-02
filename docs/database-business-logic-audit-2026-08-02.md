@@ -2,7 +2,7 @@
 
 > 审计日期：2026-08-02  
 > 审计背景：项目经过 Docker 化及 MySQL 到 PostgreSQL 的重构，需要检查原有支付业务逻辑、事务处理和 SQL 兼容性是否仍然成立。  
-> 当前状态：审计完成，问题尚未整改。
+> 当前状态：DB-01 至 DB-09 已完成整改并通过回归验证。
 
 ## 结论
 
@@ -18,15 +18,15 @@
 
 | 编号 | 严重级别 | 问题 | 主要影响 | 状态 |
 | --- | --- | --- | --- | --- |
-| DB-01 | P0 | 转账外部成功后，本地事务可能失败 | 重复付款、漏记转账、余额未扣除 | 待修复 |
-| DB-02 | P1 | 余额修改函数掩盖数据库失败 | 支付、退款、结算和代付账务不一致 | 待修复 |
-| DB-03 | P1 | 支付回调不检查中间数据库操作 | 外部已支付但订单仍未支付 | 待修复 |
-| DB-04 | P1 | 商户回调重试 SQL 不兼容 PostgreSQL | 首次通知失败后不再重试 | 待修复 |
-| DB-05 | P1 | PostgreSQL 旧库升级逻辑不完整 | 缺表、缺字段、运行时 SQL 错误 | 待修复 |
-| DB-06 | P1 | 随机通道兜底使用 MySQL `RAND()` | 无用户组配置时无法选择通道 | 待修复 |
-| DB-07 | P2 | 后台使用 PostgreSQL 不支持的 SQL | 页面提示成功但数据未修改 | 待修复 |
-| DB-08 | P2 | 自定义数据库表前缀未被完整支持 | 非默认前缀访问错误数据表 | 待修复 |
-| DB-09 | P3 | 数据库错误状态不会在成功后清除 | 日志和异常信息可能显示旧错误 | 待修复 |
+| DB-01 | P0 | 转账外部成功后，本地事务可能失败 | 重复付款、漏记转账、余额未扣除 | 已修复 |
+| DB-02 | P1 | 余额修改函数掩盖数据库失败 | 支付、退款、结算和代付账务不一致 | 已修复 |
+| DB-03 | P1 | 支付回调不检查中间数据库操作 | 外部已支付但订单仍未支付 | 已修复 |
+| DB-04 | P1 | 商户回调重试 SQL 不兼容 PostgreSQL | 首次通知失败后不再重试 | 已修复 |
+| DB-05 | P1 | PostgreSQL 旧库升级逻辑不完整 | 缺表、缺字段、运行时 SQL 错误 | 已修复 |
+| DB-06 | P1 | 随机通道兜底使用 MySQL `RAND()` | 无用户组配置时无法选择通道 | 已修复 |
+| DB-07 | P2 | 后台使用 PostgreSQL 不支持的 SQL | 页面提示成功但数据未修改 | 已修复 |
+| DB-08 | P2 | 自定义数据库表前缀未被完整支持 | 非默认前缀访问错误数据表 | 已修复 |
+| DB-09 | P3 | 数据库错误状态不会在成功后清除 | 日志和异常信息可能显示旧错误 | 已修复 |
 
 ## 详细问题
 
@@ -294,27 +294,23 @@ NOW() - INTERVAL 30 DAY
 
 MySQL 的 `pre_roll` 表通过 `AUTO_INCREMENT=101` 让轮询组 ID 从 101 开始。PostgreSQL 初始化后该表会从 1 开始。目前没有发现业务代码以 `ID >= 101` 判断轮询组，因此暂不认定为业务故障，但建议在迁移规范中明确是否需要保留原始编号范围。
 
-## 已执行验证
+## 整改结果
 
-对 PostgreSQL 进行了 SQL 兼容性验证：
+| 编号 | 主要整改 | 提交 | 核心验证 |
+| --- | --- | --- | --- |
+| DB-01 | 转账先持久化和预留余额，平台调用移出长事务；仅明确失败才退款，后台操作统一走状态机 | `b5d06f9`, `06f13a5`, `2aaf52e` | `TransferTransactionStateTest.php` |
+| DB-02 | 余额、流水、提交和回滚统一进行严格结果检查 | `9bcffb2` | `UserMoneyTransactionTest.php` |
+| DB-03 | 支付回调关键写入失败立即抛错，完整事务回滚并保留首个失败阶段 | `02bd3af` | `PaymentCallbackWriteFailureTest.php`, `PaymentCallbackRollbackTest.php` |
+| DB-04 | 回调重试改用绑定的一日时间边界，查询失败不再解释为空结果 | `906b7c7` | `PostgresBusinessSqlCompatibilityTest.php` |
+| DB-05 | 新增幂等 PostgreSQL 结构协调器；保留 `wxid` 历史数据、补齐字段扩容，并用轻量探针避免无条件 DDL | `d5163fe`, `f3fd48d`, `bf8366b` | `PostgresSchemaUpgradeTest.php` |
+| DB-06 | 根据数据库驱动选择 `RAND()` 或 `RANDOM()` | `906b7c7` | `PostgresBusinessSqlCompatibilityTest.php` |
+| DB-07 | 移除不兼容的 `UPDATE ... LIMIT`，修正时间筛选并按真实结果报告 | `906b7c7` | `PostgresBusinessSqlCompatibilityTest.php` |
+| DB-08 | 运行时及升级入口统一使用逻辑表前缀 | `6322916` | `DatabasePrefixCompatibilityTest.php` |
+| DB-09 | 清除陈旧错误并严格传播事务、提交、回滚和保存点失败 | `0b83bbb` | `PdoHelperTransactionStateTest.php` |
 
-| SQL 特性 | 结果 |
-| --- | --- |
-| `ORDER BY rand()` | 失败，PostgreSQL 不存在 `rand()` |
-| `TO_DAYS(...)` | 失败，PostgreSQL 不存在 `to_days()` |
-| `NOW()-INTERVAL 30 DAY` | 失败，时间间隔语法无效 |
-| `DATE_ADD(..., INTERVAL 2 MINUTE)` | 当前转换器可处理 |
-| `COUNT(IF(...))` | 当前转换器可处理 |
+最终验证结果：31 个自动化测试全部通过，全部 PHP 文件无语法错误；独立 Compose 项目使用空 PostgreSQL 数据卷完成全新初始化，`app` 和 `db` 均达到 `healthy`。详细命令和结果见 `docs/testing/DB-01-09-数据库逻辑整改测试.md`。
 
-现有测试除 `TlsCertificateValidationTest.php` 的外部 HTTPS 请求测试外均通过。该失败与数据库逻辑无关，但现有测试尚未覆盖：
-
-- `TO_DAYS()` 回调重试。
-- `RAND()` 通道选择。
-- PostgreSQL 的 `UPDATE LIMIT` 兼容问题。
-- 非默认数据库表前缀。
-- 从旧版本数据库到当前版本的完整升级。
-- 外部转账成功但本地事务失败的补偿流程。
-- 余额更新成功但资金流水或提交失败的异常传播。
+剩余风险：本轮验证以 PostgreSQL 为主，生产升级前仍应对数据库做完整备份，并在生产数据副本上执行一次迁移演练。支付平台真实网络、签名和商户配置仍需使用平台沙箱或小额实付单独验收。
 
 ## 建议整改顺序
 
