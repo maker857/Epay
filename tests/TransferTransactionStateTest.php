@@ -116,6 +116,54 @@ try {
 	assertTransferState((int)$recoveredOrder['status'] === 1, 'A recovered transfer must be marked successful.');
 	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '70.00', 'A successful reconciliation must not change the reserved balance again.');
 
+	Transfer::processNotify($unknownNo, 2, 'asynchronous failure');
+	Transfer::processNotify($unknownNo, 2, 'duplicate asynchronous failure');
+	$notifiedFailure = $DB->find('transfer', '*', ['biz_no'=>$unknownNo]);
+	assertTransferState((int)$notifiedFailure['status'] === 2, 'An asynchronous failure must mark a pending transfer failed.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '80.00', 'An asynchronous failure must refund the reserved balance once.');
+	assertTransferState((int)$DB->count('record', ['uid'=>$uid, 'trade_no'=>$unknownNo, 'type'=>'代付退回']) === 1, 'Duplicate failure callbacks must not refund twice.');
+
+	$redSuccessNo = transferTestNo($suffix + 4);
+	$bizNos[] = $redSuccessNo;
+	$redCreated = Transfer::red_add($uid, 'alipay', $redSuccessNo, 10, 'red success', $channelId);
+	assertTransferState($redCreated['code'] === 0 && (int)$redCreated['status'] === 4, 'A red packet transfer must be created in the waiting state.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '70.00', 'Creating a red packet must reserve its balance.');
+	$redCalls = 0;
+	$redReceived = Transfer::red_receive($redSuccessNo, 'recipient-openid', function () use (&$redCalls, $DB, $redSuccessNo) {
+		$redCalls++;
+		assertTransferState($DB->getTransactionDepth() === 0, 'A red packet provider call must run outside a database transaction.');
+		$order = $DB->find('transfer', '*', ['biz_no'=>$redSuccessNo]);
+		assertTransferState((int)$order['status'] === 0, 'A claimed red packet must be persisted as processing before the provider call.');
+		return ['code'=>0, 'status'=>1, 'orderid'=>'red-remote-success', 'paydate'=>date('Y-m-d H:i:s')];
+	});
+	assertTransferState($redReceived['code'] === 0 && (int)$redReceived['status'] === 1, 'A red packet provider success must be returned.');
+	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$redSuccessNo]) === 1, 'A received red packet must be marked successful.');
+	$redDuplicate = Transfer::red_receive($redSuccessNo, 'recipient-openid', function () use (&$redCalls) {
+		$redCalls++;
+		return ['code'=>0, 'status'=>1, 'orderid'=>'duplicate'];
+	});
+	assertTransferState($redDuplicate['code'] === -1 && $redCalls === 1, 'A received red packet must not call the provider twice.');
+
+	$redFailureNo = transferTestNo($suffix + 5);
+	$bizNos[] = $redFailureNo;
+	Transfer::red_add($uid, 'alipay', $redFailureNo, 10, 'red failure', $channelId);
+	$redFailure = Transfer::red_receive($redFailureNo, 'failed-openid', function () {
+		return ['code'=>-1, 'status'=>2, 'msg'=>'red provider rejected'];
+	});
+	assertTransferState($redFailure['code'] === -1, 'A red packet provider failure must be returned.');
+	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$redFailureNo]) === 4, 'An explicit red packet failure must return to the claimable state.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '60.00', 'A claim failure must keep the red packet balance reserved.');
+
+	$redUnknownNo = transferTestNo($suffix + 6);
+	$bizNos[] = $redUnknownNo;
+	Transfer::red_add($uid, 'alipay', $redUnknownNo, 10, 'red unknown', $channelId);
+	$redUnknown = Transfer::red_receive($redUnknownNo, 'unknown-openid', function () {
+		throw new RuntimeException('red provider timeout');
+	});
+	assertTransferState($redUnknown['code'] === -1 && (int)$redUnknown['status'] === 0, 'An uncertain red packet result must remain pending reconciliation.');
+	assertTransferState((int)$DB->findColumn('transfer', 'status', ['biz_no'=>$redUnknownNo]) === 0, 'An uncertain red packet must remain processing.');
+	assertTransferState(number_format((float)$DB->findColumn('user', 'money', ['uid'=>$uid]), 2, '.', '') === '50.00', 'An uncertain red packet must keep its balance reserved.');
+
 	echo "Transfer transaction state tests passed.\n";
 } finally {
 	while ($DB->getTransactionDepth() > 0) {

@@ -55,6 +55,7 @@ class Transfer
                     'pay_order_no'=>$result['orderid'] ?? $order['pay_order_no'],
                     'result'=>'',
                 ];
+                if(isset($result['account'])) $data['account'] = $result['account'];
                 if($status === 1) $data['paytime'] = $result['paydate'] ?? 'NOW()';
                 if(isset($result['wxpackage'])) $data['ext'] = $result['wxpackage'];
                 if($DB->update('transfer', $data, ['biz_no'=>$biz_no]) === false){
@@ -315,10 +316,7 @@ class Transfer
         ];
         $result = \lib\Plugin::call('transfer_cancel', $channel, $bizParam);
         if($result['code'] == 0){
-            $resCount = $DB->update('transfer', ['status'=>2, 'result'=>'转账已撤销'], ['biz_no' => $biz_no]);
-            if($order['uid'] > 0 && $resCount > 0){
-                changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-            }
+            self::failReservedTransfer($biz_no, '转账已撤销');
             $result['msg'] = '转账已撤销';
         }
         return $result;
@@ -369,14 +367,9 @@ class Transfer
             return;
         }
         if($status == 2 && $order['status'] == 0){ //转账失败
-            $data = ['status'=>2];
-            if($errmsg) $data['result'] = $errmsg;
-            $resCount = $DB->update('transfer', $data, ['biz_no' => $biz_no]);
-            if($order['uid'] > 0 && $resCount > 0){
-                changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-            }
+            self::failReservedTransfer($biz_no, $errmsg ?: '转账失败');
         }elseif($status == 1 && $order['status'] == 0){ //转账成功
-            $DB->update('transfer', ['status'=>1, 'paytime'=>'NOW()', 'result'=>''], ['biz_no' => $biz_no]);
+            self::completeReservedTransfer($biz_no, ['status'=>1, 'paydate'=>'NOW()']);
         }
     }
 
@@ -406,81 +399,121 @@ class Transfer
         $trans = $DB->find('transfer', '*', ['out_biz_no' => $out_biz_no, 'uid' => $uid]);
         if($trans) return ['code'=>-1, 'msg'=>'该交易号已存在，请更换交易号'];
 
-        $DB->beginTransaction();
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) throw new \RuntimeException('Unable to start red packet reservation transaction: '.$DB->error());
         $need_money = null;
-        if($uid > 0){
-            $userrow = $DB->getRow('SELECT * FROM pre_user WHERE uid=:uid FOR UPDATE', [':uid'=>$uid]);
-            if($userrow['settle']==0){
-                $DB->rollback();
-                return ['code'=>-1, 'msg'=>'您的商户出现异常，无法使用代付功能'];
+        try{
+            if($uid > 0){
+                $userrow = $DB->getRow('SELECT * FROM pre_user WHERE uid=:uid FOR UPDATE', [':uid'=>$uid]);
+                if(!$userrow) throw new \RuntimeException('Merchant not found for red packet UID '.$uid);
+                if($userrow['settle']==0){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'您的商户出现异常，无法使用代付功能'];
+                }
+                $trans = $DB->find('transfer', '*', ['out_biz_no'=>$out_biz_no, 'uid'=>$uid]);
+                if($trans){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'该交易号已存在，请更换交易号'];
+                }
+                if($conf['settle_type']==1){
+                    $today=date("Y-m-d").' 00:00:00';
+                    $order_today=$DB->getColumn('SELECT SUM(realmoney) FROM pre_order WHERE uid=:uid AND tid<>2 AND status=1 AND endtime>=:today', [':uid'=>$uid, ':today'=>$today]);
+                    if($order_today === false && $DB->error()) throw new \RuntimeException('Unable to calculate red packet balance: '.$DB->error());
+                    if(!$order_today) $order_today = 0;
+                    $enable_money=round($userrow['money']-$order_today,2);
+                    if($enable_money<0)$enable_money=0;
+                }else{
+                    $enable_money=$userrow['money'];
+                }
+                if(!$conf['transfer_rate'])$conf['transfer_rate'] = $conf['settle_rate'];
+                $need_money = round($money + $money*$conf['transfer_rate']/100,2);
+                if($need_money>$enable_money){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'需支付金额大于可转账余额'];
+                }
             }
-            if($conf['settle_type']==1){
-                $today=date("Y-m-d").' 00:00:00';
-                $order_today=$DB->getColumn("SELECT SUM(realmoney) from pre_order where uid={$uid} and tid<>2 and status=1 and endtime>='$today'");
-                if(!$order_today) $order_today = 0;
-                $enable_money=round($userrow['money']-$order_today,2);
-                if($enable_money<0)$enable_money=0;
-            }else{
-                $enable_money=$userrow['money'];
-            }
-            if(!$conf['transfer_rate'])$conf['transfer_rate'] = $conf['settle_rate'];
-            $need_money = round($money + $money*$conf['transfer_rate']/100,2);
-            if($need_money>$enable_money){
-                $DB->rollback();
-                return ['code'=>-1, 'msg'=>'需支付金额大于可转账余额'];
-            }
-        }
-        
-        $jumpurl = self::red_url($biz_no);
-        $result = ['code'=>0, 'status'=>4, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'jumpurl'=>$jumpurl];
 
-        $data = ['biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'uid'=>$uid, 'type'=>$type, 'channel'=>$channelid, 'account'=>'', 'username'=>'', 'money'=>$money, 'costmoney'=>$need_money??$money, 'addtime'=>'NOW()', 'status'=>$result['status'], 'desc'=>$desc];
-        $id = $DB->insert('transfer', $data);
-        if($need_money>0 && $id!==false){
-            changeUserMoney2($uid, $userrow['money'], $need_money, false, '代付', $biz_no);
-            $result['cost_money'] = $need_money;
+            $data = ['biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'uid'=>$uid, 'type'=>$type, 'channel'=>$channelid, 'account'=>'', 'username'=>'', 'money'=>$money, 'costmoney'=>$need_money??$money, 'addtime'=>'NOW()', 'status'=>4, 'desc'=>$desc, 'result'=>'等待领取'];
+            if($DB->insert('transfer', $data) === false) throw new \RuntimeException('Unable to reserve red packet '.$biz_no.': '.$DB->error());
+            if($need_money>0) changeUserMoney2($uid, $userrow['money'], $need_money, false, '代付', $biz_no);
+            if(!$DB->commit()) throw new \RuntimeException('Unable to commit red packet reservation '.$biz_no.': '.$DB->error());
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            throw $e;
         }
+
+        $jumpurl = self::red_url($biz_no);
         $typename = $type == 'alipay' ? '支付宝' : ($type == 'wxpay' ? '微信' : '未知');
-        $result['msg']='红包创建成功！请在'.$typename.'打开 '.$jumpurl.' 确认收款。';
-        $DB->commit();
-        return $result;
+        return ['code'=>0, 'status'=>4, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'jumpurl'=>$jumpurl, 'cost_money'=>$need_money, 'msg'=>'红包创建成功！请在'.$typename.'打开 '.$jumpurl.' 确认收款。'];
     }
 
-    public static function red_receive($biz_no, $openid){
-        global $conf, $DB;
+    public static function red_receive($biz_no, $openid, $submitter = null){
+        global $DB;
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) throw new \RuntimeException('Unable to start red packet claim transaction: '.$DB->error());
+        try{
+            $trans = $DB->getRow('SELECT * FROM pre_transfer WHERE biz_no=:biz_no FOR UPDATE', [':biz_no'=>$biz_no]);
+            if(!$trans){
+                self::rollbackToDepth($initialDepth);
+                return ['code'=>-1, 'msg'=>'红包不存在'];
+            }
+            if((int)$trans['status'] !== 4){
+                self::rollbackToDepth($initialDepth);
+                return ['code'=>-1, 'msg'=>(int)$trans['status']===1?'红包已领取':'红包状态异常，无法领取'];
+            }
+            $claimed = $DB->exec('UPDATE pre_transfer SET status=0,account=:account,result=:result WHERE biz_no=:biz_no AND status=4', [':account'=>$openid, ':result'=>'等待支付平台结果', ':biz_no'=>$biz_no]);
+            if($claimed !== 1) throw new \RuntimeException('Unable to claim red packet '.$biz_no.': '.($DB->error() ?: 'unexpected affected row count'));
+            if(!$DB->commit()) throw new \RuntimeException('Unable to commit red packet claim '.$biz_no.': '.$DB->error());
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            throw $e;
+        }
 
-        $func = function() use ($biz_no, $openid){
-            global $DB, $userrow;
-            $trans = $DB->getRow("SELECT * FROM pre_transfer WHERE biz_no=:biz_no FOR UPDATE", [':biz_no'=>$biz_no]);
-            if(!$trans) return ['code'=>-1, 'msg'=>'红包不存在'];
-            if($trans['status'] != 4) return ['code'=>-1, 'msg'=>$trans['status']==1?'红包已领取':'红包状态异常，无法领取'];
-            $channel = \lib\Channel::get($trans['channel'], $userrow['channelinfo']);
-            if(!$channel) return ['code'=>-1, 'msg'=>'当前支付通道信息不存在'];
+        $channelinfo = null;
+        if((int)$trans['uid'] > 0) $channelinfo = $DB->findColumn('user', 'channelinfo', ['uid'=>$trans['uid']]);
+        $channel = \lib\Channel::get($trans['channel'], $channelinfo);
+        if(!$channel){
+            $DB->exec('UPDATE pre_transfer SET status=4,result=:result WHERE biz_no=:biz_no AND status=0', [':result'=>'支付通道不存在', ':biz_no'=>$biz_no]);
+            return ['code'=>-1, 'msg'=>'当前支付通道信息不存在'];
+        }
 
-            $result = self::submit($trans['type'], $channel, $biz_no, $openid, '', $trans['money'], $trans['desc'], $trans['type']=='alipay'?null:$trans['desc']);
-            if($result['code']==0){
-                $data = ['account'=>$openid, 'status'=>$result['status'], 'paytime'=>'NOW()', 'pay_order_no'=>$result['orderid'], 'result'=>''];
-                if(isset($result['wxpackage'])){
-                    $data['ext'] = $result['wxpackage'];
-                    $wxinfo = \lib\Channel::getWeixin($channel['appwxmp']);
-                    $result['wxtransfer'] = [
-                        'mchId' => $channel['appmchid'],
-                        'appId' => $wxinfo['appid'],
-                        'package' => $result['wxpackage'],
-                    ];
-                }
-                $DB->update('transfer', $data, ['biz_no' => $biz_no]);
+        try{
+            $result = is_callable($submitter)
+                ? call_user_func($submitter, $trans['type'], $channel, $biz_no, $openid, '', $trans['money'], $trans['desc'], $trans['type']=='alipay'?null:$trans['desc'])
+                : self::submit($trans['type'], $channel, $biz_no, $openid, '', $trans['money'], $trans['desc'], $trans['type']=='alipay'?null:$trans['desc']);
+        }catch(\Throwable $e){
+            self::notePendingTransfer($biz_no, '红包结果待查询');
+            error_log('[transfer reconciliation] '.$biz_no.' red packet provider exception: '.$e->getMessage());
+            return ['code'=>-1, 'status'=>0, 'msg'=>'红包转账结果暂不明确，请稍后查询'];
+        }
+
+        if(($result['code'] ?? -1) == 0){
+            $result['account'] = $openid;
+            try{
+                self::completeReservedTransfer($biz_no, $result);
+            }catch(\Throwable $e){
+                self::notePendingTransfer($biz_no, '红包本地结果待对账');
+                error_log('[transfer reconciliation] '.$biz_no.' red packet completion failed: '.$e->getMessage());
+                return ['code'=>-1, 'status'=>0, 'msg'=>'平台已受理，红包状态待对账'];
+            }
+            if(isset($result['wxpackage'])){
+                $wxinfo = \lib\Channel::getWeixin($channel['appwxmp']);
+                $result['wxtransfer'] = [
+                    'mchId'=>$channel['appmchid'],
+                    'appId'=>$wxinfo['appid'],
+                    'package'=>$result['wxpackage'],
+                ];
             }
             return $result;
-        };
-
-        $DB->beginTransaction();
-        $result = $func();
-        if($result['code'] == 0){
-            $DB->commit();
-        }else{
-            $DB->rollback();
         }
+
+        $message = mb_substr((string)($result['msg'] ?? '支付平台拒绝红包转账'), 0, 80);
+        $released = $DB->exec('UPDATE pre_transfer SET status=4,result=:result WHERE biz_no=:biz_no AND status=0', [':result'=>$message, ':biz_no'=>$biz_no]);
+        if($released !== 1){
+            error_log('[transfer reconciliation] unable to release red packet '.$biz_no.': '.$DB->error());
+            return ['code'=>-1, 'status'=>0, 'msg'=>'红包失败状态待对账'];
+        }
+        $result['status'] = 4;
         return $result;
     }
 
