@@ -19,6 +19,7 @@ final class PostgresMigrations
 
         $pdo->beginTransaction();
         try {
+            self::reconcileRenamedColumns($pdo, $prefix);
             foreach ($tables as $canonicalTable => $createSql) {
                 $table = self::replaceCanonicalPrefix($canonicalTable, $prefix);
                 if (!self::tableExists($pdo, $table)) {
@@ -41,6 +42,43 @@ final class PostgresMigrations
             }
             throw $e;
         }
+    }
+
+    public static function needsReconciliation(PDO $pdo, string $prefix, string $installSql): bool
+    {
+        self::validatePrefix($prefix);
+        $tables = self::extractCreateTableStatements($installSql);
+        if ($tables === []) {
+            throw new RuntimeException('Canonical install SQL contains no CREATE TABLE statements.');
+        }
+
+        if (self::columnExists($pdo, $prefix.'_user', 'wxid')) {
+            return true;
+        }
+        foreach ($tables as $canonicalTable => $createSql) {
+            $table = self::replaceCanonicalPrefix($canonicalTable, $prefix);
+            if (!self::tableExists($pdo, $table)) {
+                return true;
+            }
+            foreach (preg_split('/\R/', $createSql) as $line) {
+                $line = trim($line);
+                if (preg_match('/^`([^`]+)`\s+/', $line, $columnMatch) && !self::columnExists($pdo, $table, $columnMatch[1])) {
+                    return true;
+                }
+                if (preg_match('/^(UNIQUE\s+)?KEY\s+`?([^`\s(]+)`?\s*\(/i', $line, $indexMatch)) {
+                    $indexName = self::indexName($table, $indexMatch[2], trim((string)$indexMatch[1]) !== '');
+                    if (!self::indexExists($pdo, $indexName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        foreach (self::knownColumnTypes($prefix) as [$table, $column, $dataType, $length]) {
+            if (self::tableExists($pdo, $table) && self::columnExists($pdo, $table, $column) && !self::columnTypeMatches($pdo, $table, $column, $dataType, $length)) {
+                return true;
+            }
+        }
+        return !self::canonicalPaymentTypesExist($pdo, $prefix);
     }
 
     public static function convertMysqlStatement(string $sql, string $prefix): array
@@ -107,21 +145,53 @@ final class PostgresMigrations
         }
     }
 
+    private static function reconcileRenamedColumns(PDO $pdo, string $prefix): void
+    {
+        $table = $prefix.'_user';
+        if (!self::tableExists($pdo, $table) || !self::columnExists($pdo, $table, 'wxid')) {
+            return;
+        }
+        if (!self::columnExists($pdo, $table, 'wx_uid')) {
+            $pdo->exec(
+                'ALTER TABLE '.self::quoteIdentifier($table).
+                ' RENAME COLUMN '.self::quoteIdentifier('wxid').' TO '.self::quoteIdentifier('wx_uid')
+            );
+            return;
+        }
+        $pdo->exec(
+            'UPDATE '.self::quoteIdentifier($table).
+            ' SET '.self::quoteIdentifier('wx_uid').'='.self::quoteIdentifier('wxid').
+            ' WHERE '.self::quoteIdentifier('wx_uid').' IS NULL AND '.self::quoteIdentifier('wxid').' IS NOT NULL'
+        );
+        $pdo->exec(
+            'ALTER TABLE '.self::quoteIdentifier($table).' DROP COLUMN '.self::quoteIdentifier('wxid')
+        );
+    }
+
     private static function reconcileKnownColumnTypes(PDO $pdo, string $prefix): void
     {
-        foreach ([
-            [$prefix.'_plugin', 'types', 'varchar(500)'],
-            [$prefix.'_plugin', 'transtypes', 'varchar(500)'],
-            [$prefix.'_user', 'pwd', 'varchar(255)'],
-            [$prefix.'_user', 'msgconfig', 'text'],
-        ] as [$table, $column, $type]) {
-            if (self::tableExists($pdo, $table) && self::columnExists($pdo, $table, $column)) {
+        foreach (self::knownColumnTypes($prefix) as [$table, $column, $dataType, $length, $sqlType]) {
+            if (self::tableExists($pdo, $table) && self::columnExists($pdo, $table, $column) && !self::columnTypeMatches($pdo, $table, $column, $dataType, $length)) {
                 $pdo->exec(
                     'ALTER TABLE '.self::quoteIdentifier($table).
-                    ' ALTER COLUMN '.self::quoteIdentifier($column).' TYPE '.$type
+                    ' ALTER COLUMN '.self::quoteIdentifier($column).' TYPE '.$sqlType
                 );
             }
         }
+    }
+
+    private static function knownColumnTypes(string $prefix): array
+    {
+        return [
+            [$prefix.'_plugin', 'types', 'character varying', 500, 'varchar(500)'],
+            [$prefix.'_plugin', 'transtypes', 'character varying', 500, 'varchar(500)'],
+            [$prefix.'_user', 'pwd', 'character varying', 255, 'varchar(255)'],
+            [$prefix.'_user', 'msgconfig', 'text', null, 'text'],
+            [$prefix.'_order', 'ip', 'character varying', 50, 'varchar(50)'],
+            [$prefix.'_log', 'ip', 'character varying', 50, 'varchar(50)'],
+            [$prefix.'_regcode', 'ip', 'character varying', 50, 'varchar(50)'],
+            [$prefix.'_order', 'buyer', 'character varying', 100, 'varchar(100)'],
+        ];
     }
 
     private static function upsertCanonicalPaymentTypes(PDO $pdo, string $prefix, string $installSql): void
@@ -158,6 +228,19 @@ final class PostgresMigrations
                 '(SELECT COALESCE(MAX("id"), 1) FROM '.self::quoteIdentifier($table).'), true)'
             );
         }
+    }
+
+    private static function canonicalPaymentTypesExist(PDO $pdo, string $prefix): bool
+    {
+        $table = $prefix.'_type';
+        if (!self::tableExists($pdo, $table)) {
+            return false;
+        }
+        $statement = $pdo->query(
+            'SELECT "id", "name" FROM '.self::quoteIdentifier($table).' WHERE "id" IN (6,7)'
+        );
+        $types = $statement->fetchAll(PDO::FETCH_KEY_PAIR);
+        return $types === [6=>'paypal', 7=>'douyinpay'] || $types === [7=>'douyinpay', 6=>'paypal'];
     }
 
     private static function updateVersionAndClearCache(PDO $pdo, string $prefix): void
@@ -252,6 +335,29 @@ final class PostgresMigrations
             'WHERE table_schema=current_schema() AND table_name=:table AND column_name=:column'
         );
         $statement->execute([':table'=>$table, ':column'=>$column]);
+        return (int)$statement->fetchColumn() === 1;
+    }
+
+    private static function columnTypeMatches(PDO $pdo, string $table, string $column, string $dataType, ?int $length): bool
+    {
+        $statement = $pdo->prepare(
+            'SELECT data_type, character_maximum_length FROM information_schema.columns '.
+            'WHERE table_schema=current_schema() AND table_name=:table AND column_name=:column'
+        );
+        $statement->execute([':table'=>$table, ':column'=>$column]);
+        $actual = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$actual || $actual['data_type'] !== $dataType) {
+            return false;
+        }
+        return $length === null || (int)$actual['character_maximum_length'] === $length;
+    }
+
+    private static function indexExists(PDO $pdo, string $indexName): bool
+    {
+        $statement = $pdo->prepare(
+            'SELECT COUNT(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname=:index'
+        );
+        $statement->execute([':index'=>$indexName]);
         return (int)$statement->fetchColumn() === 1;
     }
 

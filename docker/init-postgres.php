@@ -96,7 +96,11 @@ function upgrade_schema(PDO $pdo, string $prefix, string $configTable, string $i
         if ($installSql === false) {
             throw new RuntimeException('install.sql not found');
         }
-        PostgresMigrations::upgradeToCurrent($pdo, $prefix, $installSql);
+        $schemaChanged = $version < PostgresMigrations::CURRENT_VERSION ||
+            PostgresMigrations::needsReconciliation($pdo, $prefix, $installSql);
+        if ($schemaChanged) {
+            PostgresMigrations::upgradeToCurrent($pdo, $prefix, $installSql);
+        }
 
         $pdo->beginTransaction();
         foreach (['admin_pwd', 'admin_paypwd'] as $key) {
@@ -113,10 +117,12 @@ function upgrade_schema(PDO $pdo, string $prefix, string $configTable, string $i
             }
         }
         $pdo->commit();
-        fwrite(
-            STDOUT,
-            "PostgreSQL schema upgraded from {$version} to ".PostgresMigrations::CURRENT_VERSION."\n"
-        );
+        if ($schemaChanged) {
+            fwrite(
+                STDOUT,
+                "PostgreSQL schema upgraded from {$version} to ".PostgresMigrations::CURRENT_VERSION."\n"
+            );
+        }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         fwrite(STDERR, "PostgreSQL schema upgrade failed: {$e->getMessage()}\n");
