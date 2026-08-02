@@ -846,29 +846,56 @@ function processOrder(&$srow,$notify=true){
 
 function changeUserMoney($uid, $money, $add=true, $type=null, $orderid=null){
 	global $DB;
-	if($money<=0)return;
+	if($money<=0)return true;
 	if($type=='代付退回' && !empty($orderid)){
 		$isrefund = $DB->getColumn("SELECT id FROM pre_record WHERE uid=:uid AND type='代付退回' AND trade_no=:orderid LIMIT 1", [':uid'=>$uid, ':orderid'=>$orderid]);
 		if($isrefund)return;
 	}
-	$DB->beginTransaction();
-	$oldmoney = $DB->getColumn("SELECT money FROM pre_user WHERE uid=:uid LIMIT 1 FOR UPDATE", [':uid'=>$uid]);
-	if($add == true){
-		$action = 1;
-		$newmoney = round($oldmoney+$money, 2);
-	}else{
-		$action = 2;
-		$newmoney = round($oldmoney-$money, 2);
+	$initialTransactionDepth = $DB->getTransactionDepth();
+	if(!$DB->beginTransaction()){
+		throw new \RuntimeException('Unable to start balance transaction: '.$DB->error());
 	}
-	$res = $DB->exec("UPDATE pre_user SET money=:money WHERE uid=:uid", [':money'=>$newmoney, ':uid'=>$uid]);
-	$DB->insert('record', ['uid'=>$uid, 'action'=>$action, 'money'=>$money, 'oldmoney'=>$oldmoney, 'newmoney'=>$newmoney, 'type'=>$type, 'trade_no'=>$orderid, 'date'=>'NOW()']);
-	$DB->commit();
-	return $res;
+	try{
+		$oldmoney = $DB->getColumn("SELECT money FROM pre_user WHERE uid=:uid LIMIT 1 FOR UPDATE", [':uid'=>$uid]);
+		if($oldmoney === false || !is_numeric($oldmoney)){
+			throw new \RuntimeException('Unable to lock merchant balance for UID '.$uid.': '.($DB->error() ?: 'merchant not found'));
+		}
+		if($add == true){
+			$action = 1;
+			$newmoney = round($oldmoney+$money, 2);
+		}else{
+			$action = 2;
+			$newmoney = round($oldmoney-$money, 2);
+		}
+		$res = $DB->exec("UPDATE pre_user SET money=:money WHERE uid=:uid", [':money'=>$newmoney, ':uid'=>$uid]);
+		if($res !== 1){
+			throw new \RuntimeException('Unable to update merchant balance for UID '.$uid.': '.($DB->error() ?: 'unexpected affected row count'));
+		}
+		$recordId = $DB->insert('record', ['uid'=>$uid, 'action'=>$action, 'money'=>$money, 'oldmoney'=>$oldmoney, 'newmoney'=>$newmoney, 'type'=>$type, 'trade_no'=>$orderid, 'date'=>'NOW()']);
+		if($recordId === false){
+			throw new \RuntimeException('Unable to insert merchant balance record for UID '.$uid.': '.$DB->error());
+		}
+		if(!$DB->commit()){
+			throw new \RuntimeException('Unable to commit merchant balance for UID '.$uid.': '.$DB->error());
+		}
+		return $res;
+	}catch(\Throwable $e){
+		while($DB->getTransactionDepth() > $initialTransactionDepth){
+			if(!$DB->rollBack())break;
+		}
+		throw $e;
+	}
 }
 
 function changeUserMoney2($uid, $oldmoney, $money, $add=true, $type=null, $orderid=null){
 	global $DB;
-	if($money<=0)return;
+	if($money<=0)return true;
+	if(!$DB->inTransaction()){
+		throw new \RuntimeException('changeUserMoney2 requires an active database transaction');
+	}
+	if(!is_numeric($oldmoney)){
+		throw new \RuntimeException('Invalid old balance for UID '.$uid);
+	}
 	if($add == true){
 		$action = 1;
 		$newmoney = round($oldmoney+$money, 2);
@@ -877,7 +904,13 @@ function changeUserMoney2($uid, $oldmoney, $money, $add=true, $type=null, $order
 		$newmoney = round($oldmoney-$money, 2);
 	}
 	$res = $DB->exec("UPDATE pre_user SET money=:money WHERE uid=:uid", [':money'=>$newmoney, ':uid'=>$uid]);
-	$DB->insert('record', ['uid'=>$uid, 'action'=>$action, 'money'=>$money, 'oldmoney'=>$oldmoney, 'newmoney'=>$newmoney, 'type'=>$type, 'trade_no'=>$orderid, 'date'=>'NOW()']);
+	if($res !== 1){
+		throw new \RuntimeException('Unable to update merchant balance for UID '.$uid.': '.($DB->error() ?: 'unexpected affected row count'));
+	}
+	$recordId = $DB->insert('record', ['uid'=>$uid, 'action'=>$action, 'money'=>$money, 'oldmoney'=>$oldmoney, 'newmoney'=>$newmoney, 'type'=>$type, 'trade_no'=>$orderid, 'date'=>'NOW()']);
+	if($recordId === false){
+		throw new \RuntimeException('Unable to insert merchant balance record for UID '.$uid.': '.$DB->error());
+	}
 	return $res;
 }
 
