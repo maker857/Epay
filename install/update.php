@@ -17,7 +17,12 @@ $db->exec("set sql_mode = ''");
 $db->exec("set names utf8");
 
 $version = 0;
-if($rs = $db->query("SELECT v FROM pay_config WHERE k='version'")){
+$prefix = $dbconfig['dbqz'];
+if(!preg_match('/^[a-zA-Z][a-zA-Z0-9_]*$/', $prefix)){
+	exit('数据库表前缀格式错误');
+}
+$configTable = '`'.$prefix.'_config`';
+if($rs = $db->query("SELECT v FROM {$configTable} WHERE k='version'")){
 	$version = $rs->fetchColumn();
 }
 

@@ -93,7 +93,7 @@ elseif($_GET['do']=='order'){
 	$DB->exec("delete from pre_order where status=0 and addtime<'{$thtime}'");
 	$DB->exec("delete from pre_regcode where `time`<'".(time()-3600*24)."'");
 	$DB->exec("delete from pre_blacklist where endtime is not null and endtime<NOW()");
-	$DB->exec("delete from pay_wxkflog where addtime<'".date("Y-m-d H:i:s", strtotime('-48 hours'))."'");
+	$DB->exec("delete from pre_wxkflog where addtime<'".date("Y-m-d H:i:s", strtotime('-48 hours'))."'");
 
 	$day = date("Ymd", strtotime("-1 day"));
 

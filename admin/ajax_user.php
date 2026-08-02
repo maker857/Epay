@@ -311,11 +311,11 @@ case 'buyerStat':
 	}
 	$list = $DB->getAll("SELECT A.*,ISNULL(B.id) is_black
 		FROM (SELECT {$column} `user`,COUNT(*) AS order_count,MAX(trade_no) trade_no
-		FROM pay_order
+		FROM pre_order
 		WHERE {$sql}
 		GROUP BY {$column}
 		ORDER BY order_count DESC) A
-		LEFT JOIN pay_blacklist B ON A.`user`=B.content", $params);
+		LEFT JOIN pre_blacklist B ON A.`user`=B.content", $params);
 	exit(json_encode($list));
 break;
 
