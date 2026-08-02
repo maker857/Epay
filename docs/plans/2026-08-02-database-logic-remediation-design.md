@@ -1,7 +1,7 @@
 # 数据库与业务逻辑整改设计
 
-> 设计日期：2026-08-02  
-> 对应审计：`docs/database-business-logic-audit-2026-08-02.md`  
+> 设计日期：2026-08-02
+> 对应审计：`docs/database-business-logic-audit-2026-08-02.md`
 > 状态：已确认，待实施
 
 ## 目标
