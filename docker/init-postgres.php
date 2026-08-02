@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once '/var/www/html/includes/lib/PasswordHasher.php';
+require_once '/var/www/html/docker/PostgresBootstrap.php';
 
 $host = getenv('DB_HOST') ?: 'db';
 $port = getenv('DB_PORT') ?: '5432';
@@ -77,6 +78,8 @@ if (!$exists) {
 } else {
     upgrade_schema($pdo, $prefix, $table);
 }
+
+PostgresBootstrap::ensureEmptyIdentityStartsAt($pdo, $prefix . '_user', 'uid', 1000);
 
 function upgrade_schema(PDO $pdo, string $prefix, string $configTable): void {
     $version = (int)$pdo->query("SELECT v FROM \"{$configTable}\" WHERE k='version'")->fetchColumn();
