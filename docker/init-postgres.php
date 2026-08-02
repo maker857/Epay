@@ -90,7 +90,6 @@ function upgrade_schema(PDO $pdo, string $prefix, string $configTable, string $i
     $version = (int)$pdo->query(
         'SELECT v FROM '.quote_postgres_identifier($configTable)." WHERE k='version'"
     )->fetchColumn();
-    if ($version >= PostgresMigrations::CURRENT_VERSION) return;
 
     try {
         $installSql = file_get_contents($installFile);

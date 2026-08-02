@@ -32,6 +32,31 @@ function columnExists(PDO $pdo, $table, $column)
 	return (int)$stmt->fetchColumn() === 1;
 }
 
+function columnType(PDO $pdo, $table, $column)
+{
+	$stmt = $pdo->prepare('SELECT data_type, character_maximum_length FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=:table AND column_name=:column');
+	$stmt->execute([':table'=>$table, ':column'=>$column]);
+	return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function hasIndexColumns(PDO $pdo, $table, array $columns, $unique = false)
+{
+	$stmt = $pdo->prepare(
+		'SELECT i.indisunique, array_agg(a.attname ORDER BY keys.ordinality) AS columns '.
+		'FROM pg_index i '.
+		'JOIN pg_class t ON t.oid=i.indrelid '.
+		'JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS keys(attnum, ordinality) ON true '.
+		'JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=keys.attnum '.
+		'WHERE t.relname=:table GROUP BY i.indexrelid, i.indisunique'
+	);
+	$stmt->execute([':table'=>$table]);
+	foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $index) {
+		$actual = trim((string)$index['columns'], '{}');
+		if (explode(',', $actual) === $columns && (!$unique || $index['indisunique'])) return true;
+	}
+	return false;
+}
+
 $host = getenv('DB_HOST') ?: 'db';
 $port = getenv('DB_PORT') ?: '5432';
 $name = getenv('DB_NAME');
@@ -44,6 +69,12 @@ $pdo = new PDO("pgsql:host={$host};port={$port};dbname={$name}", $user, $passwor
 $prefix = 'upgrade_'.bin2hex(random_bytes(4));
 $failurePrefix = 'upgrade_fail_'.bin2hex(random_bytes(4));
 $installSql = file_get_contents(__DIR__.'/../install/install.sql');
+$initSource = file_get_contents(__DIR__.'/../docker/init-postgres.php');
+
+assertSchemaUpgrade(
+	strpos($initSource, 'if ($version >= PostgresMigrations::CURRENT_VERSION) return;') === false,
+	'Container startup must reconcile schemas even when a previously broken upgrade already wrote the current version.'
+);
 
 try {
 	$pdo->exec('CREATE TABLE '.quoteSchemaIdentifier($prefix.'_config').' (k VARCHAR(32) PRIMARY KEY, v TEXT)');
@@ -73,6 +104,29 @@ try {
 	] as $expected) {
 		assertSchemaUpgrade(columnExists($pdo, $expected[0], $expected[1]), 'Missing upgraded column '.$expected[0].'.'.$expected[1].'.');
 	}
+	foreach ([
+		[$prefix.'_order', ['bill_mch_trade_no'], false],
+		[$prefix.'_transfer', ['out_biz_no', 'uid'], false],
+		[$prefix.'_blacklist', ['content', 'type'], true],
+	] as $expectedIndex) {
+		assertSchemaUpgrade(
+			hasIndexColumns($pdo, $expectedIndex[0], $expectedIndex[1], $expectedIndex[2]),
+			'Missing upgraded index on '.$expectedIndex[0].' ('.implode(',', $expectedIndex[1]).').'
+		);
+	}
+	foreach ([
+		[$prefix.'_plugin', 'types', 'character varying', 500],
+		[$prefix.'_plugin', 'transtypes', 'character varying', 500],
+		[$prefix.'_user', 'pwd', 'character varying', 255],
+		[$prefix.'_user', 'msgconfig', 'text', null],
+	] as $expectedType) {
+		$actualType = columnType($pdo, $expectedType[0], $expectedType[1]);
+		assertSchemaUpgrade($actualType !== false, 'Missing typed column '.$expectedType[0].'.'.$expectedType[1].'.');
+		assertSchemaUpgrade($actualType['data_type'] === $expectedType[2], 'Unexpected type for '.$expectedType[0].'.'.$expectedType[1].'.');
+		assertSchemaUpgrade($actualType['character_maximum_length'] === $expectedType[3], 'Unexpected length for '.$expectedType[0].'.'.$expectedType[1].'.');
+	}
+	$typeRows = $pdo->query('SELECT id,name FROM '.quoteSchemaIdentifier($prefix.'_type').' WHERE id IN (6,7) ORDER BY id')->fetchAll(PDO::FETCH_KEY_PAIR);
+	assertSchemaUpgrade($typeRows === [6=>'paypal', 7=>'douyinpay'], 'Canonical payment types 6 and 7 were not reconciled.');
 	$version = $pdo->query("SELECT v FROM ".quoteSchemaIdentifier($prefix.'_config')." WHERE k='version'")->fetchColumn();
 	assertSchemaUpgrade((int)$version === PostgresMigrations::CURRENT_VERSION, 'Successful upgrade must set the current version.');
 
