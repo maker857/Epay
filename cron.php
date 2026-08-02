@@ -191,8 +191,13 @@ elseif($_GET['do']=='order'){
 }
 elseif($_GET['do']=='notify'){
 	$limit = 20; //每次重试的订单数量
+	$notify_cutoff = date('Y-m-d H:i:s', strtotime('-1 day'));
 	for($i=0;$i<$limit;$i++){
-		$srow=$DB->getRow("SELECT * FROM pre_order WHERE (TO_DAYS(NOW()) - TO_DAYS(endtime) <= 1) AND notify>0 AND notifytime<NOW() LIMIT 1");
+		$srow=$DB->getRow("SELECT * FROM pre_order WHERE endtime>=:cutoff AND notify>0 AND notifytime<NOW() LIMIT 1", [':cutoff'=>$notify_cutoff]);
+		if($srow === false && $DB->error()){
+			error_log('[notify retry] unable to select pending order: '.$DB->error());
+			break;
+		}
 		if(!$srow)break;
 
 		//通知时间：1分钟，3分钟，20分钟，1小时，2小时
@@ -244,8 +249,13 @@ elseif($_GET['do']=='notify'){
 }
 elseif($_GET['do']=='notify2'){
 	$limit = 20; //每次重试的订单数量
+	$notify_cutoff = date('Y-m-d H:i:s', strtotime('-1 day'));
 	for($i=0;$i<$limit;$i++){
-		$srow=$DB->getRow("SELECT * FROM pre_order WHERE (TO_DAYS(NOW()) - TO_DAYS(endtime) <= 1) AND notify=-1 LIMIT 1");
+		$srow=$DB->getRow("SELECT * FROM pre_order WHERE endtime>=:cutoff AND notify=-1 LIMIT 1", [':cutoff'=>$notify_cutoff]);
+		if($srow === false && $DB->error()){
+			error_log('[notify recovery] unable to select pending order: '.$DB->error());
+			break;
+		}
 		if(!$srow)break;
 
 		$url=creat_callback($srow);

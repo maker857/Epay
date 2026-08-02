@@ -183,15 +183,26 @@ case 'operation': //批量操作订单
 	$checkbox=$_POST['checkbox'];
 	$i=0;
 	foreach($checkbox as $trade_no){
-		if($status==4)$DB->exec("DELETE FROM pre_order WHERE trade_no='$trade_no'");
+		if($status==4){
+			$result = $DB->exec("DELETE FROM pre_order WHERE trade_no=:trade_no", [':trade_no'=>$trade_no]);
+			if($result === false) exit(json_encode(['code'=>-1, 'msg'=>'删除订单失败：'.$DB->error()]));
+			$i += (int)$result;
+		}
 		elseif($status==3){
-			\lib\Order::unfreeze($trade_no);
+			$result = \lib\Order::unfreeze($trade_no);
+			if($result['code'] != 0) exit(json_encode($result));
+			$i++;
 		}
 		elseif($status==2){
-			\lib\Order::freeze($trade_no);
+			$result = \lib\Order::freeze($trade_no);
+			if($result['code'] != 0) exit(json_encode($result));
+			$i++;
 		}
-		else $DB->exec("update pre_order set status='$status' where trade_no='$trade_no' limit 1");
-		$i++;
+		else{
+			$result = $DB->exec("UPDATE pre_order SET status=:status WHERE trade_no=:trade_no", [':status'=>$status, ':trade_no'=>$trade_no]);
+			if($result === false) exit(json_encode(['code'=>-1, 'msg'=>'修改订单状态失败：'.$DB->error()]));
+			$i += (int)$result;
+		}
 	}
 	exit('{"code":0,"msg":"成功改变'.$i.'条订单状态"}');
 break;

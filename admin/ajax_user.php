@@ -46,7 +46,8 @@ case 'userList':
 	}
 	if(isset($_POST['order_days']) && !empty($_POST['order_days'])) {
 		$order_days = intval($_POST['order_days']);
-		$sql.=" AND uid NOT IN (SELECT DISTINCT uid FROM pre_order WHERE date>=NOW()-INTERVAL {$order_days} DAY)";
+		$sql.=" AND uid NOT IN (SELECT DISTINCT uid FROM pre_order WHERE date>=:inactive_since)";
+		$params[':inactive_since'] = date('Y-m-d H:i:s', strtotime('-'.$order_days.' days'));
 	}
 	$order = "uid DESC";
 	if(isset($_POST['order']) && !empty($_POST['order'])) {
