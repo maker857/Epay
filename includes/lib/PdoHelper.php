@@ -10,6 +10,17 @@ class PdoHelper
 	private $errorInfo;
 	private $driver = 'mysql';
 	private $transactionDepth = 0;
+	private $transactionErrors = [];
+
+	private function clearError()
+	{
+		$this->errorInfo = null;
+	}
+
+	private function captureError($statement = null)
+	{
+		$this->errorInfo = $statement ? $statement->errorInfo() : $this->db->errorInfo();
+	}
 
 	/**
 	 * PdoHelper constructor.
@@ -282,6 +293,7 @@ class PdoHelper
 	 */
 	public function exec($_sql, $_array = null)
 	{
+		$this->clearError();
 		$_sql = $this->dealSql($_sql);
 		if (is_array($_array)) {
 			$stmt = $this->db->prepare($_sql);
@@ -290,12 +302,12 @@ class PdoHelper
 				if($result!==false){
 					return $stmt->rowCount();
 				}else{
-					$this->errorInfo = $stmt->errorInfo();
+					$this->captureError($stmt);
 					$this->logTransactionError($_sql);
 					return false;
 				}
 			}else{
-				$this->errorInfo = $this->db->errorInfo();
+				$this->captureError();
 				$this->logTransactionError($_sql);
 				return false;
 			}
@@ -304,7 +316,7 @@ class PdoHelper
 			if($result!==false){
 				return $result;
 			}else{
-				$this->errorInfo = $this->db->errorInfo();
+				$this->captureError();
 				$this->logTransactionError($_sql);
 				return false;
 			}
@@ -320,6 +332,7 @@ class PdoHelper
 	 */
 	public function query($_sql, $_array = null)
 	{
+		$this->clearError();
 		$_sql = $this->dealSql($_sql);
 		if (is_array($_array)) {
 			$stmt = $this->db->prepare($_sql);
@@ -327,12 +340,12 @@ class PdoHelper
 				if($stmt->execute($_array)){
 					return $stmt;
 				}else{
-					$this->errorInfo = $stmt->errorInfo();
+					$this->captureError($stmt);
 					$this->logTransactionError($_sql);
 					return false;
 				}
 			}else{
-				$this->errorInfo = $this->db->errorInfo();
+				$this->captureError();
 				$this->logTransactionError($_sql);
 				return false;
 			}
@@ -340,7 +353,7 @@ class PdoHelper
 			if($stmt = $this->db->query($_sql)){
 				return $stmt;
 			}else{
-				$this->errorInfo = $this->db->errorInfo();
+				$this->captureError();
 				$this->logTransactionError($_sql);
 				return false;
 			}
@@ -350,6 +363,9 @@ class PdoHelper
 	private function logTransactionError($sql)
 	{
 		if ($this->transactionDepth > 0) {
+			if (!isset($this->transactionErrors[$this->transactionDepth])) {
+				$this->transactionErrors[$this->transactionDepth] = $this->errorInfo;
+			}
 			error_log('[db transaction] '.$this->error().' SQL='.preg_replace('/\s+/', ' ', trim($sql)));
 		}
 	}
@@ -452,12 +468,17 @@ class PdoHelper
 	//开启事务
 	public function beginTransaction()
 	{
+		$this->clearError();
 		if ($this->transactionDepth === 0) {
 			$result = $this->db->beginTransaction();
 		} else {
 			$result = $this->db->exec('SAVEPOINT pdo_helper_'.$this->transactionDepth) !== false;
 		}
-		if ($result) $this->transactionDepth++;
+		if ($result) {
+			$this->transactionDepth++;
+			unset($this->transactionErrors[$this->transactionDepth]);
+		}
+		else $this->captureError();
 		return $result;
 	}
 
@@ -465,32 +486,57 @@ class PdoHelper
 	public function commit()
 	{
 		if ($this->transactionDepth <= 0) return false;
+		if (isset($this->transactionErrors[$this->transactionDepth])) {
+			$this->errorInfo = $this->transactionErrors[$this->transactionDepth];
+			return false;
+		}
+		$this->clearError();
 		if ($this->transactionDepth === 1) {
 			$result = $this->db->commit();
-			if ($result) $this->transactionDepth = 0;
+			if ($result) {
+				unset($this->transactionErrors[1]);
+				$this->transactionDepth = 0;
+			}
+			else {
+				$this->captureError();
+				if (!$this->db->inTransaction()) $this->transactionDepth = 0;
+			}
 			return $result;
 		}
 		$savepoint = 'pdo_helper_'.($this->transactionDepth - 1);
 		$result = $this->db->exec('RELEASE SAVEPOINT '.$savepoint) !== false;
-		if ($result) $this->transactionDepth--;
+		if ($result) {
+			unset($this->transactionErrors[$this->transactionDepth]);
+			$this->transactionDepth--;
+		}
+		else $this->captureError();
 		return $result;
 	}
 
 	//回滚事务
 	public function rollBack()
 	{
+		$this->clearError();
 		if ($this->transactionDepth <= 0) return false;
 		if ($this->transactionDepth === 1) {
 			$result = $this->db->rollBack();
-			if ($result) $this->transactionDepth = 0;
+			if ($result) {
+				unset($this->transactionErrors[1]);
+				$this->transactionDepth = 0;
+			}
+			else {
+				$this->captureError();
+				if (!$this->db->inTransaction()) $this->transactionDepth = 0;
+			}
 			return $result;
 		}
 		$savepoint = 'pdo_helper_'.($this->transactionDepth - 1);
 		$rolledBack = $this->db->exec('ROLLBACK TO SAVEPOINT '.$savepoint) !== false;
 		if ($rolledBack) {
 			$this->db->exec('RELEASE SAVEPOINT '.$savepoint);
+			unset($this->transactionErrors[$this->transactionDepth]);
 			$this->transactionDepth--;
-		}
+		}else $this->captureError();
 		return $rolledBack;
 	}
 
@@ -508,6 +554,7 @@ class PdoHelper
 	public function transaction($action){
 		if (is_callable($action))
 		{
+			$initialDepth = $this->transactionDepth;
 			if (!$this->beginTransaction()) {
 				throw new \RuntimeException('Unable to start database transaction: '.$this->error());
 			}
@@ -517,15 +564,25 @@ class PdoHelper
 
 				if ($result === false)
 				{
-					$this->rollBack();
+					if (!$this->rollBack()) {
+						throw new \RuntimeException('Unable to roll back database transaction: '.$this->error());
+					}
 				}
 				else
 				{
-					$this->commit();
+					if (!$this->commit()) {
+						$error = $this->error();
+						while ($this->transactionDepth > $initialDepth) {
+							if (!$this->rollBack()) break;
+						}
+						throw new \RuntimeException('Unable to commit database transaction: '.$error);
+					}
 				}
 			}
 			catch (\Throwable $e) {
-				$this->rollBack();
+				while ($this->transactionDepth > $initialDepth) {
+					if (!$this->rollBack()) break;
+				}
 				throw $e;
 			}
 
