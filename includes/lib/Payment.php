@@ -386,7 +386,9 @@ class Payment {
                 $completion = self::normalizeCompletionTime($end_time);
                 if($completion !== null) $data = array_merge($data, $completion);
                 if($order['settle']>0) $data['settle'] = $order['settle'];
-                $DB->update('order', $data, ['trade_no'=>$order['trade_no']]);
+                if($DB->update('order', $data, ['trade_no'=>$order['trade_no']]) === false){
+                    throw new \RuntimeException('Unable to update payment order completion fields for '.$order['trade_no'].': '.$DB->error());
+                }
 
                 processOrder($order, $isnotify);
             }elseif(empty($currentOrder['api_trade_no']) && !empty($api_trade_no)){
@@ -396,13 +398,19 @@ class Payment {
                 if(!empty($bill_mch_trade_no)) $data['bill_mch_trade_no'] = $bill_mch_trade_no;
                 $completion = self::normalizeCompletionTime($end_time);
                 if($completion !== null) $data = array_merge($data, $completion);
-                $DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]);
+                if($DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]) === false){
+                    throw new \RuntimeException('Unable to update payment order transaction fields for '.$currentOrder['trade_no'].': '.$DB->error());
+                }
             }elseif(empty($currentOrder['buyer']) && !empty($buyer)){
                 $data = ['buyer'=>$buyer];
-                $DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]);
+                if($DB->update('order', $data, ['trade_no'=>$currentOrder['trade_no']]) === false){
+                    throw new \RuntimeException('Unable to update payment order buyer for '.$currentOrder['trade_no'].': '.$DB->error());
+                }
             }
             if($isnotify && $order['settle']>0){
-                $DB->update('order', ['settle'=>$order['settle']], ['trade_no'=>$currentOrder['trade_no']]);
+                if($DB->update('order', ['settle'=>$order['settle']], ['trade_no'=>$currentOrder['trade_no']]) === false){
+                    throw new \RuntimeException('Unable to update payment order settlement for '.$currentOrder['trade_no'].': '.$DB->error());
+                }
             }
             if(!$DB->commit()){
                 throw new \RuntimeException('Unable to commit payment callback transaction: '.$DB->error());

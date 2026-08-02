@@ -659,6 +659,14 @@ function processNotify($order, $api_trade_no=null, $buyer=null, $bill_trade_no =
 	\lib\Payment::processOrder(true, $order, $api_trade_no, $buyer, $bill_trade_no, $bill_mch_trade_no, $end_time);
 }
 
+function requireDatabaseWrite($result, $operation){
+	global $DB;
+	if($result === false){
+		throw new \RuntimeException($operation.': '.$DB->error());
+	}
+	return $result;
+}
+
 function processOrder(&$srow,$notify=true){
 	global $DB,$CACHE,$conf,$channel;
 	$addmoney = $srow['getmoney'];
@@ -669,7 +677,7 @@ function processOrder(&$srow,$notify=true){
 	if(!empty($channel['costrate']) && $channel['costrate'] > 0){
 		$profitmoney = round($profitmoney - $srow['realmoney'] * $channel['costrate'] / 100, 2);
 	}
-	$DB->update('order', ['profitmoney'=>$profitmoney], ['trade_no'=>$srow['trade_no']]);
+	requireDatabaseWrite($DB->update('order', ['profitmoney'=>$profitmoney], ['trade_no'=>$srow['trade_no']]), 'Unable to update order profit for '.$srow['trade_no']);
 
 	if($srow['tid']==1){ //商户注册
 		changeUserMoney($srow['uid'], $addmoney, true, '订单收入', $srow['trade_no']);
@@ -677,10 +685,10 @@ function processOrder(&$srow,$notify=true){
 		if($info){
 			$key = random(32);
 			$paystatus = $conf['user_review']==1?2:1;
-			$sds=$DB->exec("INSERT INTO `pre_user` (`upid`, `key`, `money`, `email`, `phone`, `addtime`, `pay`, `settle`, `keylogin`, `apply`, `status`) VALUES (:upid, :key, '0.00', :email, :phone, NOW(), :paystatus, 1, 0, 0, 1)", [':upid'=>$info['upid'], ':key'=>$key, ':email'=>$info['email'], ':phone'=>$info['phone'], ':paystatus'=>$paystatus]);
+			$sds=requireDatabaseWrite($DB->exec("INSERT INTO `pre_user` (`upid`, `key`, `money`, `email`, `phone`, `addtime`, `pay`, `settle`, `keylogin`, `apply`, `status`) VALUES (:upid, :key, '0.00', :email, :phone, NOW(), :paystatus, 1, 0, 0, 1)", [':upid'=>$info['upid'], ':key'=>$key, ':email'=>$info['email'], ':phone'=>$info['phone'], ':paystatus'=>$paystatus]), 'Unable to create registered merchant for '.$srow['trade_no']);
 			$uid=$DB->lastInsertId();
 			$pwd = \lib\PasswordHasher::hash($info['pwd']);
-			$DB->update('user', ['pwd'=>$pwd], ['uid'=>$uid]);
+			requireDatabaseWrite($DB->update('user', ['pwd'=>$pwd], ['uid'=>$uid]), 'Unable to store registered merchant password for '.$srow['trade_no']);
 			if($sds){
 				if(!empty($info['email'])){
 					$sub = $conf['sitename'].' - 注册成功通知';
@@ -688,7 +696,7 @@ function processOrder(&$srow,$notify=true){
 					send_mail($info['email'], $sub, $msg);
 				}
 				if(isset($info['invitecodeid']) && $info['invitecodeid']>0){
-					$DB->update('invitecode', ['status'=>1, 'uid'=>$uid, 'usetime'=>'NOW()'], ['id'=>$info['invitecodeid']]);
+					requireDatabaseWrite($DB->update('invitecode', ['status'=>1, 'uid'=>$uid, 'usetime'=>'NOW()'], ['id'=>$info['invitecodeid']]), 'Unable to consume invite code for '.$srow['trade_no']);
 				}
 				if($paystatus == 2){
 					\lib\MsgNotice::send('regaudit', 0, ['uid'=>$uid, 'account'=>$info['email']?$info['email']:$info['phone']]);
@@ -716,7 +724,7 @@ function processOrder(&$srow,$notify=true){
 		}
 	}else if($srow['tid']==4){ //购买用户组
 		$param = json_decode($srow['param'], true);
-		changeUserGroup($param['uid'], $param['gid'], $param['endtime']);
+		requireDatabaseWrite(changeUserGroup($param['uid'], $param['gid'], $param['endtime']), 'Unable to update merchant group for '.$srow['trade_no']);
 
 		$upid = $DB->findColumn('user', 'upid', ['uid'=>$param['uid']]);
 		if($upid > 0){
@@ -734,7 +742,7 @@ function processOrder(&$srow,$notify=true){
 		$param = json_decode($srow['param'], true);
 		$userrow = $DB->find('user', 'deposit', ['uid'=>$param['uid']]);
 		$deposit = $userrow['deposit'] > 0 ? round($userrow['deposit'] + $srow['money'], 2) : $srow['money'];
-		$DB->exec("UPDATE pre_user SET deposit=:deposit WHERE uid=:uid", [':deposit'=>$deposit, ':uid'=>$param['uid']]);
+		requireDatabaseWrite($DB->exec("UPDATE pre_user SET deposit=:deposit WHERE uid=:uid", [':deposit'=>$deposit, ':uid'=>$param['uid']]), 'Unable to update merchant deposit for '.$srow['trade_no']);
 	}else{
 		if($channel['mode']==1){
 			if($reducemoney>0)
@@ -746,7 +754,7 @@ function processOrder(&$srow,$notify=true){
 			$black = $DB->find('blacklist', '*', ['type'=>0, 'content'=>$srow['buyer']], null, 1);
 			if($black){
 				$srow['black'] = true;
-				$DB->exec("UPDATE pre_order SET notify=-1 WHERE trade_no='{$srow['trade_no']}'");
+				requireDatabaseWrite($DB->exec("UPDATE pre_order SET notify=-1 WHERE trade_no='{$srow['trade_no']}'"), 'Unable to disable merchant notification for '.$srow['trade_no']);
 				if($conf['black_payact'] == 2){
 					$params = ['trade_no'=>$srow['trade_no'], 'money'=>$srow['realmoney'], 'key'=>md5($srow['trade_no'].SYS_KEY.$srow['trade_no'])];
             		get_curl($conf['localurl'].'api.php?act=refundapi', http_build_query($params));
@@ -756,10 +764,10 @@ function processOrder(&$srow,$notify=true){
 		}
 		$url=creat_callback($srow);
 		if(do_notify($url['notify'])){
-			$DB->exec("UPDATE pre_order SET notify=0 WHERE trade_no='{$srow['trade_no']}'");
+			requireDatabaseWrite($DB->exec("UPDATE pre_order SET notify=0 WHERE trade_no='{$srow['trade_no']}'"), 'Unable to mark merchant notification successful for '.$srow['trade_no']);
 		}elseif($notify==true){
 			//通知时间：1分钟，3分钟，20分钟，1小时，2小时
-			$DB->exec("UPDATE pre_order SET notify=1,notifytime=date_add(now(), interval 1 minute) WHERE trade_no='{$srow['trade_no']}'");
+			requireDatabaseWrite($DB->exec("UPDATE pre_order SET notify=1,notifytime=date_add(now(), interval 1 minute) WHERE trade_no='{$srow['trade_no']}'"), 'Unable to schedule merchant notification retry for '.$srow['trade_no']);
 		}
 	}
 	if($srow['tid']==0 || $srow['tid']==3){
@@ -798,13 +806,13 @@ function processOrder(&$srow,$notify=true){
 		$nowmoney=round($nowmoney+$srow['realmoney'], 2);
 		$CACHE->save($cachekey, $nowmoney, 86400);
 		if($nowmoney>=$channel['daytop']){
-			$DB->exec("UPDATE pre_channel SET daystatus=1 WHERE id='{$channel['id']}'");
+			requireDatabaseWrite($DB->exec("UPDATE pre_channel SET daystatus=1 WHERE id='{$channel['id']}'"), 'Unable to disable channel after daily amount limit');
 		}
 	}
 	if($channel['daymaxorder'] > 0){
 		$orders = $DB->getColumn("SELECT COUNT(*) FROM pre_order WHERE channel='{$channel['id']}' AND status>0 AND date=CURDATE()");
 		if($orders >= $channel['daymaxorder']){
-			$DB->exec("UPDATE pre_channel SET daystatus=1 WHERE id='{$channel['id']}'");
+			requireDatabaseWrite($DB->exec("UPDATE pre_channel SET daystatus=1 WHERE id='{$channel['id']}'"), 'Unable to disable channel after daily order limit');
 		}
 	}
 	if($srow['profits']>0){ //订单分账处理
@@ -834,11 +842,11 @@ function processOrder(&$srow,$notify=true){
 								$allpsmoney += $psmoney;
 							}
 						}
-						$DB->insert('psorder', ['rid'=>$psreceiver['id'], 'trade_no'=>$srow['trade_no'], 'sub_trade_no'=>$sub_order['sub_trade_no'], 'api_trade_no'=>$sub_order['api_trade_no'], 'money'=>round($allpsmoney, 2), 'status'=>$status, 'addtime'=>'NOW()', 'delay'=>$delay, 'rdata'=>json_encode($rdata)]);
+						requireDatabaseWrite($DB->insert('psorder', ['rid'=>$psreceiver['id'], 'trade_no'=>$srow['trade_no'], 'sub_trade_no'=>$sub_order['sub_trade_no'], 'api_trade_no'=>$sub_order['api_trade_no'], 'money'=>round($allpsmoney, 2), 'status'=>$status, 'addtime'=>'NOW()', 'delay'=>$delay, 'rdata'=>json_encode($rdata)]), 'Unable to create sub-order profit sharing record for '.$srow['trade_no']);
 					}
 				}
 			}else{
-				$DB->insert('psorder', ['rid'=>$psreceiver['id'], 'trade_no'=>$srow['trade_no'], 'api_trade_no'=>$srow['api_trade_no'], 'money'=>round($allpsmoney, 2), 'status'=>$status, 'addtime'=>'NOW()', 'delay'=>$delay, 'rdata'=>json_encode($rdata)]);
+				requireDatabaseWrite($DB->insert('psorder', ['rid'=>$psreceiver['id'], 'trade_no'=>$srow['trade_no'], 'api_trade_no'=>$srow['api_trade_no'], 'money'=>round($allpsmoney, 2), 'status'=>$status, 'addtime'=>'NOW()', 'delay'=>$delay, 'rdata'=>json_encode($rdata)]), 'Unable to create profit sharing record for '.$srow['trade_no']);
 			}
 		}
 	}
