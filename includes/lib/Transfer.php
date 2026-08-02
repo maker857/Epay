@@ -33,7 +33,74 @@ class Transfer
         return \lib\Plugin::call('transfer', $channel, $bizParam);
     }
 
-    public static function add($uid, $type, $out_biz_no, $payee_account, $payee_real_name, $money, $title = null, $desc = null, $bookid = null, $channelid = null){
+    private static function rollbackToDepth($depth){
+        global $DB;
+        while($DB->getTransactionDepth() > $depth){
+            if(!$DB->rollBack()) break;
+        }
+    }
+
+    private static function completeReservedTransfer($biz_no, $result){
+        global $DB;
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) throw new \RuntimeException('Unable to start transfer completion transaction: '.$DB->error());
+        try{
+            $order = $DB->getRow('SELECT * FROM pre_transfer WHERE biz_no=:biz_no FOR UPDATE', [':biz_no'=>$biz_no]);
+            if(!$order) throw new \RuntimeException('Reserved transfer not found: '.$biz_no);
+            if((int)$order['status'] === 2) throw new \RuntimeException('Cannot complete a failed transfer: '.$biz_no);
+            if((int)$order['status'] !== 1){
+                $status = isset($result['status']) ? (int)$result['status'] : 0;
+                $data = [
+                    'status'=>$status,
+                    'pay_order_no'=>$result['orderid'] ?? $order['pay_order_no'],
+                    'result'=>'',
+                ];
+                if($status === 1) $data['paytime'] = $result['paydate'] ?? 'NOW()';
+                if(isset($result['wxpackage'])) $data['ext'] = $result['wxpackage'];
+                if($DB->update('transfer', $data, ['biz_no'=>$biz_no]) === false){
+                    throw new \RuntimeException('Unable to finalize transfer '.$biz_no.': '.$DB->error());
+                }
+            }
+            if(!$DB->commit()) throw new \RuntimeException('Unable to commit transfer completion '.$biz_no.': '.$DB->error());
+            return $DB->find('transfer', '*', ['biz_no'=>$biz_no]);
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            throw $e;
+        }
+    }
+
+    private static function failReservedTransfer($biz_no, $message){
+        global $DB;
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) throw new \RuntimeException('Unable to start transfer failure transaction: '.$DB->error());
+        try{
+            $order = $DB->getRow('SELECT * FROM pre_transfer WHERE biz_no=:biz_no FOR UPDATE', [':biz_no'=>$biz_no]);
+            if(!$order) throw new \RuntimeException('Reserved transfer not found: '.$biz_no);
+            if((int)$order['status'] === 1) throw new \RuntimeException('Cannot fail a successful transfer: '.$biz_no);
+            if((int)$order['status'] !== 2){
+                $updated = $DB->exec('UPDATE pre_transfer SET status=2,result=:result WHERE biz_no=:biz_no AND status IN (0,3,4)', [':result'=>mb_substr((string)$message, 0, 80), ':biz_no'=>$biz_no]);
+                if($updated !== 1) throw new \RuntimeException('Unable to mark transfer failed '.$biz_no.': '.($DB->error() ?: 'unexpected affected row count'));
+                if((int)$order['uid'] > 0 && (float)$order['costmoney'] > 0){
+                    changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
+                }
+            }
+            if(!$DB->commit()) throw new \RuntimeException('Unable to commit transfer failure '.$biz_no.': '.$DB->error());
+            return $DB->find('transfer', '*', ['biz_no'=>$biz_no]);
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            throw $e;
+        }
+    }
+
+    private static function notePendingTransfer($biz_no, $message){
+        global $DB;
+        $result = mb_substr((string)$message, 0, 80);
+        if($DB->update('transfer', ['result'=>$result], ['biz_no'=>$biz_no, 'status'=>0]) === false){
+            error_log('[transfer reconciliation] unable to update '.$biz_no.': '.$DB->error());
+        }
+    }
+
+    public static function add($uid, $type, $out_biz_no, $payee_account, $payee_real_name, $money, $title = null, $desc = null, $bookid = null, $channelid = null, $submitter = null){
         global $conf, $DB, $userrow, $siteurl;
         $biz_no = $out_biz_no;
         if(strlen($biz_no)!=19 || !is_numeric($biz_no)) $biz_no = date("YmdHis").rand(11111,99999);
@@ -86,68 +153,105 @@ class Transfer
         }
 
         $trans = $DB->find('transfer', '*', ['out_biz_no' => $out_biz_no, 'uid' => $uid]);
-        if($trans) return ['code'=>-1, 'msg'=>'该交易号已存在，请更换交易号'];
+        if($trans) return ['code'=>-1, 'msg'=>'该交易号已存在，请更换交易号', 'status'=>(int)$trans['status'], 'biz_no'=>$trans['biz_no'], 'out_biz_no'=>$out_biz_no];
 
-        $DB->beginTransaction();
+        $initialDepth = $DB->getTransactionDepth();
+        if(!$DB->beginTransaction()) throw new \RuntimeException('Unable to start transfer reservation transaction: '.$DB->error());
         $need_money = null;
-        if($uid > 0){
-            $userrow = $DB->getRow('SELECT * FROM pre_user WHERE uid=:uid FOR UPDATE', [':uid'=>$uid]);
-            if($userrow['settle']==0){
-                $DB->rollback();
-                return ['code'=>-1, 'msg'=>'您的商户出现异常，无法使用代付功能'];
+        try{
+            if($uid > 0){
+                $userrow = $DB->getRow('SELECT * FROM pre_user WHERE uid=:uid FOR UPDATE', [':uid'=>$uid]);
+                if(!$userrow) throw new \RuntimeException('Merchant not found for transfer UID '.$uid);
+                if($userrow['settle']==0){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'您的商户出现异常，无法使用代付功能'];
+                }
+                $trans = $DB->find('transfer', '*', ['out_biz_no'=>$out_biz_no, 'uid'=>$uid]);
+                if($trans){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'该交易号已存在，请更换交易号', 'status'=>(int)$trans['status'], 'biz_no'=>$trans['biz_no'], 'out_biz_no'=>$out_biz_no];
+                }
+                if($conf['settle_type']==1){
+                    $today=date("Y-m-d").' 00:00:00';
+                    $order_today=$DB->getColumn("SELECT SUM(realmoney) from pre_order where uid=:uid and tid<>2 and status=1 and endtime>=:today", [':uid'=>$uid, ':today'=>$today]);
+                    if($order_today === false && $DB->error()) throw new \RuntimeException('Unable to calculate transferable balance: '.$DB->error());
+                    if(!$order_today) $order_today = 0;
+                    $enable_money=round($userrow['money']-$order_today,2);
+                    if($enable_money<0)$enable_money=0;
+                }else{
+                    $enable_money=$userrow['money'];
+                }
+                if(!$conf['transfer_rate'])$conf['transfer_rate'] = $conf['settle_rate'];
+                $need_money = round($money + $money*$conf['transfer_rate']/100,2);
+                if($need_money>$enable_money){
+                    self::rollbackToDepth($initialDepth);
+                    return ['code'=>-1, 'msg'=>'需支付金额大于可转账余额'];
+                }
             }
-            if($conf['settle_type']==1){
-                $today=date("Y-m-d").' 00:00:00';
-                $order_today=$DB->getColumn("SELECT SUM(realmoney) from pre_order where uid={$uid} and tid<>2 and status=1 and endtime>='$today'");
-                if(!$order_today) $order_today = 0;
-                $enable_money=round($userrow['money']-$order_today,2);
-                if($enable_money<0)$enable_money=0;
-            }else{
-                $enable_money=$userrow['money'];
+
+            $reservedStatus = $channelid == -1 ? 3 : 0;
+            $data = ['biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'uid'=>$uid, 'type'=>$type, 'channel'=>$channelid, 'account'=>$payee_account, 'username'=>$payee_real_name, 'money'=>$money, 'costmoney'=>$need_money??$money, 'addtime'=>'NOW()', 'status'=>$reservedStatus, 'desc'=>$title?$title:$desc, 'result'=>$channelid == -1 ? '等待管理员审核' : '等待提交到支付平台'];
+            if($DB->insert('transfer', $data) === false) throw new \RuntimeException('Unable to reserve transfer '.$biz_no.': '.$DB->error());
+            if($need_money>0){
+                changeUserMoney2($uid, $userrow['money'], $need_money, false, '代付', $biz_no);
             }
-            if(!$conf['transfer_rate'])$conf['transfer_rate'] = $conf['settle_rate'];
-            $need_money = round($money + $money*$conf['transfer_rate']/100,2);
-            if($need_money>$enable_money){
-                $DB->rollback();
-                return ['code'=>-1, 'msg'=>'需支付金额大于可转账余额'];
-            }
-        }
-        
-        if($channelid == -1){
-            $result = ['code'=>0, 'status'=>3, 'orderid'=>null, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no];
-        }else{
-            $result = self::submit($type, $channel, $biz_no, $payee_account, $payee_real_name, $money, $title, $desc);
-            $result['biz_no'] = $biz_no;
-            $result['out_biz_no'] = $out_biz_no;
+            if(!$DB->commit()) throw new \RuntimeException('Unable to commit transfer reservation '.$biz_no.': '.$DB->error());
+        }catch(\Throwable $e){
+            self::rollbackToDepth($initialDepth);
+            throw $e;
         }
 
-        if($result['code']==0){
-            $paytime = $result['status'] == 1 ? 'NOW()' : null;
-            $data = ['biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'uid'=>$uid, 'type'=>$type, 'channel'=>$channelid, 'account'=>$payee_account, 'username'=>$payee_real_name, 'money'=>$money, 'costmoney'=>$need_money??$money, 'addtime'=>'NOW()', 'paytime'=>$paytime, 'pay_order_no'=>$result['orderid'], 'status'=>$result['status'], 'desc'=>$title?$title:$desc];
-            if(isset($result['wxpackage'])) $data['ext'] = $result['wxpackage'];
-            $id = $DB->insert('transfer', $data);
-            if($need_money>0 && $id!==false){
-                changeUserMoney2($uid, $userrow['money'], $need_money, false, '代付', $biz_no);
-                $result['cost_money'] = $need_money;
+        if($channelid == -1){
+            return ['code'=>0, 'status'=>3, 'orderid'=>null, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'cost_money'=>$need_money, 'msg'=>'提交成功！请等待管理员审核转账。'];
+        }
+
+        try{
+            $result = is_callable($submitter)
+                ? call_user_func($submitter, $type, $channel, $biz_no, $payee_account, $payee_real_name, $money, $title, $desc)
+                : self::submit($type, $channel, $biz_no, $payee_account, $payee_real_name, $money, $title, $desc);
+        }catch(\Throwable $e){
+            self::notePendingTransfer($biz_no, '平台结果待查询: '.$e->getMessage());
+            error_log('[transfer reconciliation] '.$biz_no.' provider exception: '.$e->getMessage());
+            return ['code'=>-1, 'status'=>0, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'cost_money'=>$need_money, 'msg'=>'转账结果暂不明确，请通过原交易号查询'];
+        }
+
+        $result['biz_no'] = $biz_no;
+        $result['out_biz_no'] = $out_biz_no;
+        $result['cost_money'] = $need_money;
+        if(($result['code'] ?? -1) == 0){
+            try{
+                self::completeReservedTransfer($biz_no, $result);
+            }catch(\Throwable $e){
+                self::notePendingTransfer($biz_no, '本地结果待对账');
+                error_log('[transfer reconciliation] '.$biz_no.' local completion failed: '.$e->getMessage());
+                return ['code'=>-1, 'status'=>0, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'cost_money'=>$need_money, 'msg'=>'平台已受理，本地状态待对账'];
             }
-            if($result['status'] == 1){
-                $result['msg']='转账成功！转账单据号:'.$result['orderid'].' 支付时间:'.$result['paydate'];
-            }elseif($result['status'] == 3){
-                $result['msg']='提交成功！请等待管理员审核转账。';
+            if((int)$result['status'] === 1){
+                $result['msg']='转账成功！转账单据号:'.($result['orderid'] ?? '').' 支付时间:'.($result['paydate'] ?? '');
             }elseif(isset($result['wxpackage'])){
-                $jumpurl = $siteurl.'paypage/wxtrans.php?type=transfer&id='.$id;
-                $result['msg']='提交成功！请在微信打开 '.$jumpurl.' 确认收款。转账单据号:'.$result['orderid'].' 支付时间:'.$result['paydate'];
+                $jumpurl = $siteurl.'paypage/wxtrans.php?type=transfer&id='.$biz_no;
+                $result['msg']='提交成功！请在微信打开 '.$jumpurl.' 确认收款。';
                 $result['jumpurl'] = $jumpurl;
             }else{
-                $result['msg']='提交成功！转账处理中。转账单据号:'.$result['orderid'].' 支付时间:'.$result['paydate'];
+                $result['msg']='提交成功！转账处理中。';
             }
+            return $result;
         }
-        $DB->commit();
-        return $result;
+
+        $failureMessage = $result['errmsg'] ?? ($result['msg'] ?? '支付平台拒绝转账');
+        try{
+            self::failReservedTransfer($biz_no, $failureMessage);
+            $result['status'] = 2;
+            return $result;
+        }catch(\Throwable $e){
+            self::notePendingTransfer($biz_no, '失败结果待对账');
+            error_log('[transfer reconciliation] '.$biz_no.' failure finalization failed: '.$e->getMessage());
+            return ['code'=>-1, 'status'=>0, 'biz_no'=>$biz_no, 'out_biz_no'=>$out_biz_no, 'cost_money'=>$need_money, 'msg'=>'平台返回失败，本地退款状态待对账'];
+        }
     }
 
     //转账状态刷新
-    public static function status($biz_no){
+    public static function status($biz_no, $queryHandler = null){
         global $DB;
         $order = $DB->find('transfer', '*', ['biz_no' => $biz_no]);
         if(!$order) return ['code'=>-1, 'msg'=>'付款记录不存在'];
@@ -159,20 +263,18 @@ class Transfer
         $channel = \lib\Channel::get($order['channel'], $channelinfo);
         if(!$channel) return ['code'=>-1, 'msg'=>'支付通道不存在'];
 
-        $result = self::query($order['type'], $channel, $biz_no, $order['pay_order_no']);
+        $result = is_callable($queryHandler)
+            ? call_user_func($queryHandler, $order['type'], $channel, $biz_no, $order['pay_order_no'])
+            : self::query($order['type'], $channel, $biz_no, $order['pay_order_no']);
         if($result['code'] == 0){
             if($result['status'] == 2){
                 if($order['status'] == 0 || $order['status'] == 3){
-                    $resCount = $DB->update('transfer', ['status'=>2, 'result'=>$result['errmsg']], ['biz_no' => $biz_no]);
-                    if($order['uid'] > 0 && $resCount > 0){
-                        changeUserMoney($order['uid'], $order['costmoney'], true, '代付退回', $biz_no);
-                    }
+                    self::failReservedTransfer($biz_no, $result['errmsg'] ?? '转账失败');
                 }
                 $result['msg'] = '转账失败：'.($result['errmsg']?$result['errmsg']:'原因未知');
             }elseif($result['status'] == 1){
                 if($order['status'] == 0 || $order['status'] == 3){
-                    $paytime = $result['paydate'] ?? 'NOW()';
-                    $DB->update('transfer', ['status'=>1, 'paytime'=>$paytime, 'result'=>''], ['biz_no' => $biz_no]);
+                    self::completeReservedTransfer($biz_no, $result);
                 }
                 $result['msg'] = '转账成功！';
             }else{
