@@ -37,7 +37,7 @@ $studioDescription = 'A small independent team shaping clear digital experiences
                         <span class="title-line"><span data-load-item style="--load-index: 2">Good ideas need</span></span>
                         <span class="title-line"><i data-load-item style="--load-index: 3">room to move.</i></span>
                     </h1>
-                    <p class="hero-intro" data-load-item style="--load-index: 4">We help ambitious people turn a sharp point of view into brands, digital products, and experiences that stay useful long after launch.</p>
+                    <p class="hero-intro" data-load-item style="--load-index: 4">We turn sharp points of view into brands, digital products, and experiences that stay useful long after launch.</p>
                     <a class="text-link" href="#work" data-load-item data-magnetic style="--load-index: 5">View selected work <span aria-hidden="true">&rarr;</span></a>
                 </div>
                 <div class="hero-art" aria-label="Abstract illustration" data-load-item data-parallax style="--load-index: 3">
@@ -88,7 +88,6 @@ $studioDescription = 'A small independent team shaping clear digital experiences
 
             <section class="approach-section" id="approach" aria-labelledby="approach-title">
                 <div class="approach-intro" data-reveal>
-                    <p class="eyebrow">How we work</p>
                     <h2 id="approach-title">Less theatre.<br><i>More traction.</i></h2>
                 </div>
                 <div class="approach-list" data-reveal-group>
@@ -99,7 +98,6 @@ $studioDescription = 'A small independent team shaping clear digital experiences
             </section>
 
             <section class="contact-section" id="contact" aria-labelledby="contact-title" data-reveal>
-                <p class="eyebrow">Have a good problem?</p>
                 <h2 id="contact-title">Let's make<br><i>something useful.</i></h2>
                 <a class="contact-button" href="mailto:hello@example.com" data-magnetic>hello@example.com <span aria-hidden="true">&rarr;</span></a>
             </section>

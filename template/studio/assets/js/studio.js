@@ -5,7 +5,7 @@
     root.classList.add('motion-ready');
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const precisePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const precisePointer = window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 801px)');
     const abortController = new AbortController();
     const listenerOptions = { signal: abortController.signal };
     let revealObserver = null;
@@ -129,4 +129,3 @@
         if (revealObserver) revealObserver.disconnect();
     }, { once: true });
 })();
-

@@ -13,7 +13,7 @@ if ($template === false || $css === false) {
 }
 
 $requiredTemplatePatterns = [
-    'assets/js/studio.js',
+    'js/studio.js',
     'data-reveal',
     'data-reveal-group',
     'data-reveal-item',
@@ -83,4 +83,3 @@ if (preg_match('/window\.addEventListener\s*\(\s*[\'\"]scroll[\'\"]/', $script) 
 }
 
 echo "Studio motion intensity 8 design test passed." . PHP_EOL;
-
