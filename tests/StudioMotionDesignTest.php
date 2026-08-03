@@ -38,6 +38,8 @@ foreach (["鈫?", "鉁?", "�"] as $brokenGlyph) {
 
 $requiredCssPatterns = [
     '--motion-intensity: 8',
+    '--hero-title-size: clamp(52px, 5vw, 76px)',
+    '--hero-title-mobile: clamp(46px, 13vw, 56px)',
     '.motion-ready',
     '@media (prefers-reduced-motion: reduce)',
     '--tilt-x',

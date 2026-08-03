@@ -30,6 +30,8 @@
   --duration-hover: 450ms;
   --load-stagger: 90ms;
   --reveal-stagger: 80ms;
+  --hero-title-size: clamp(52px, 5vw, 76px);
+  --hero-title-mobile: clamp(46px, 13vw, 56px);
 }
 
 * {
@@ -201,6 +203,10 @@ h2 {
   line-height: 1.02;
   letter-spacing: -.075em;
   margin: 28px 0;
+}
+
+h1 {
+  font-size: var(--hero-title-size);
 }
 
 h1 i,
@@ -908,7 +914,10 @@ h2 i {
     padding: 64px 0 70px;
   }
 
-  h1,
+  h1 {
+    font-size: var(--hero-title-mobile);
+  }
+
   h2 {
     font-size: clamp(52px, 15vw, 82px);
   }
