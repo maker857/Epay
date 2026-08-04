@@ -153,7 +153,7 @@ class Pay
         }else{
             $version = defined('API_INIT') ? 1 : 0;
             $trade_no=date("YmdHis").rand(11111,99999);
-            if(!$DB->exec("INSERT INTO `pre_order` (`trade_no`,`out_trade_no`,`uid`,`addtime`,`name`,`money`,`notify_url`,`return_url`,`param`,`domain`,`ip`,`status`,`version`,`cert_info`) VALUES (:trade_no, :out_trade_no, :uid, NOW(), :name, :money, :notify_url, :return_url, :param, :domain, :clientip, 0, :version, :cert_info)", [':trade_no'=>$trade_no, ':out_trade_no'=>$out_trade_no, ':uid'=>$pid, ':name'=>$name, ':money'=>$money, ':notify_url'=>$notify_url, ':return_url'=>$return_url, ':domain'=>$domain, ':clientip'=>$clientip, ':param'=>$param, ':version'=>$version, 'cert_info'=>$cert_info]))sysmsg('创建订单失败，请返回重试！');
+            if(!$DB->exec("INSERT INTO `pre_order` (`trade_no`,`out_trade_no`,`uid`,`type`,`channel`,`addtime`,`name`,`money`,`notify_url`,`return_url`,`param`,`domain`,`ip`,`status`,`version`,`cert_info`) VALUES (:trade_no, :out_trade_no, :uid, 0, 0, NOW(), :name, :money, :notify_url, :return_url, :param, :domain, :clientip, 0, :version, :cert_info)", [':trade_no'=>$trade_no, ':out_trade_no'=>$out_trade_no, ':uid'=>$pid, ':name'=>$name, ':money'=>$money, ':notify_url'=>$notify_url, ':return_url'=>$return_url, ':domain'=>$domain, ':clientip'=>$clientip, ':param'=>$param, ':version'=>$version, 'cert_info'=>$cert_info]))sysmsg('创建订单失败，请返回重试！');
         }
 
 
@@ -419,7 +419,7 @@ class Pay
         }else{
             $version = defined('API_INIT') ? 1 : 0;
             $trade_no=date("YmdHis").rand(11111,99999);
-            if(!$DB->exec("INSERT INTO `pre_order` (`trade_no`,`out_trade_no`,`uid`,`addtime`,`name`,`money`,`notify_url`,`return_url`,`param`,`domain`,`ip`,`buyer`,`status`,`version`,`cert_info`) VALUES (:trade_no, :out_trade_no, :uid, NOW(), :name, :money, :notify_url, :return_url, :param, :domain, :clientip, :buyer, 0, :version, :cert_info)", [':trade_no'=>$trade_no, ':out_trade_no'=>$out_trade_no, ':uid'=>$pid, ':name'=>$name, ':money'=>$money, ':notify_url'=>$notify_url, ':return_url'=>$return_url, ':domain'=>$domain, ':clientip'=>$clientip, ':buyer'=>$sub_openid, ':param'=>$param, ':version'=>$version, ':cert_info'=>$cert_info]))echojsonmsg('创建订单失败，请返回重试！');
+            if(!$DB->exec("INSERT INTO `pre_order` (`trade_no`,`out_trade_no`,`uid`,`type`,`channel`,`addtime`,`name`,`money`,`notify_url`,`return_url`,`param`,`domain`,`ip`,`buyer`,`status`,`version`,`cert_info`) VALUES (:trade_no, :out_trade_no, :uid, 0, 0, NOW(), :name, :money, :notify_url, :return_url, :param, :domain, :clientip, :buyer, 0, :version, :cert_info)", [':trade_no'=>$trade_no, ':out_trade_no'=>$out_trade_no, ':uid'=>$pid, ':name'=>$name, ':money'=>$money, ':notify_url'=>$notify_url, ':return_url'=>$return_url, ':domain'=>$domain, ':clientip'=>$clientip, ':buyer'=>$sub_openid, ':param'=>$param, ':version'=>$version, ':cert_info'=>$cert_info]))echojsonmsg('创建订单失败，请返回重试！');
         }
 
         if(empty($type)){
